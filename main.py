@@ -3,7 +3,7 @@ import torch
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.utils.data import DataLoader, DistributedSampler
-from dataSet import LasagnaDataset
+from dataset import LasagnaDataset
 
 def run(rank, device):
     print(f"Process {rank} running on device {device}")
