@@ -4,5 +4,5 @@ class GNNLayer(nn.Module):
     def __init__(self):
         pass
     
-    def forward(graphStructure, subgraphFeature):
+    def forward(self, graphStructure, subgraphFeature):
         pass
