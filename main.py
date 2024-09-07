@@ -13,6 +13,12 @@ def run(rank, device):
     datasetPath = "/data/yangshen/template/BNS-GCN/dataset"
     dataset = LasagnaDataset("proteins", datasetPath)
     
+    # for epoch
+        # Dataloader gets data using info of rank
+        
+        # loss = Model.forward
+        # loss.backward
+    
 
 def init_process(rank, n_gpus):
     device = f'cuda:{rank % n_gpus}'
