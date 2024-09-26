@@ -33,6 +33,7 @@ class LocalFeatureStore():
         features = []
         for k, v in machine_nodes.items():
             if k == world_rank:
+                # nodes on current machine
                 for i in index:
                     while i not in self.feature_map[layer]:
                         await asyncio.sleep(0.1)

@@ -59,11 +59,12 @@ for part in recv_map:
 
 # 初始化分布式环境
 def init_process(rank, size, fn, backend='gloo'):
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = '29500'
-    dist.init_process_group(backend, rank=rank, world_size=size)
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '29511'
+    dist.init_process_group(backend, rank=rank, world_size=size, init_method='env://')
     fn(rank, size)
-
+# from buffer import LocalFeatureStore
+# feature_store = LocalFeatureStore()
 # 第4步：定义跨多分区消息传递的 GCN 层
 class GCNLayerWithPartition(nn.Module):
     def __init__(self, in_feats, out_feats, num_parts):
@@ -75,29 +76,34 @@ class GCNLayerWithPartition(nn.Module):
         # 1. 跨GPU消息传递：发送节点特征到接收节点
         dist.barrier()  # 等待所有进程同步
         print(f"Rank {rank}: 进入消息传递阶段")
-
-        for part_u in send_map:
-            if part_u == rank:
-                for part_v in send_map[part_u]:
-                    # 发送特征到其他GPU
-                    send_feat = feat[send_map[part_u][part_v]].clone()
-                    print(f"Rank {rank}: 发送特征到 {part_v}, send_feat.shape={send_feat.shape}")
-                    dist.send(tensor=send_feat, dst=part_v)
-
-            elif part_u in recv_map:
-                for part_v in recv_map[part_u]:
-                    # 接收特征来自其他GPU
-                    recv_feat = torch.zeros_like(feat[recv_map[part_u][part_v]])
-                    print(f"Rank {rank}: 等待接收来自 {part_v} 的特征")
-                    dist.recv(tensor=recv_feat, src=part_v)
-
-                    # 更新接收节点特征
-                    feat[recv_map[part_u][part_v]] = recv_feat
-                    print(f"Rank {rank}: 接收特征来自 {part_v}, recv_feat.shape={recv_feat.shape}")
-
+        ops = []
+        send_list = [torch.tensor([0.0])] * size
+        for part_v in send_map[rank]:
+            # 发送特征到其他GPU
+            send_feat = feat[send_map[rank][part_v]].clone()
+            print(f"Rank {rank}: 发送特征到 {part_v}, send_feat.shape={send_feat.shape}")
+            # dist.isend(tensor=send_feat, dst=part_v)
+            send_list[part_v] = send_feat
+            # print("send:", dist.isend(tensor=send_feat, dst=part_v))
+        output = [torch.empty(1)] * size
+        for part_v in recv_map[rank]:
+            # 接收特征来自其他GPU
+            recv_feat = torch.empty_like(feat[recv_map[rank][part_v]])
+            output[part_v] = recv_feat
+        dist.all_to_all(output, send_list)
+        # dist.barrier()
+        print(f"Rank {rank}: 进入消息接受阶段")
+        for part_v in recv_map[rank]:
+            # 接收特征来自其他GPU
+            recv_feat = output[part_v]
+            dist.irecv(tensor=recv_feat, src=part_v).wait()
+            # 更新接收节点特征
+            feat[recv_map[rank][part_v]] = recv_feat
+            print(f"Rank {rank}: 接收特征来自 {part_v}, recv_feat.shape={recv_feat.shape}")
+        print(f"Rank {rank}: Finish")
         dist.barrier()  # 再次同步，确保所有进程完成通信
 
-        print('process')
+        print(f'Rank {rank}: process')
         
         # 2. 消息传递和特征聚合 (每个子图内进行)
         graph.ndata['h'] = feat
