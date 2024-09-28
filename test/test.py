@@ -56,11 +56,11 @@ for part in send_map:
 for part in recv_map:
     for source_part in recv_map[part]:
         recv_map[part][source_part] = torch.tensor(recv_map[part][source_part])
-
+from all_to_all import all_to_all
 # 初始化分布式环境
 def init_process(rank, size, fn, backend='gloo'):
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '29511'
+    os.environ['MASTER_PORT'] = '29515'
     dist.init_process_group(backend, rank=rank, world_size=size, init_method='env://')
     fn(rank, size)
 # from buffer import LocalFeatureStore
@@ -90,13 +90,15 @@ class GCNLayerWithPartition(nn.Module):
             # 接收特征来自其他GPU
             recv_feat = torch.empty_like(feat[recv_map[rank][part_v]])
             output[part_v] = recv_feat
-        dist.all_to_all(output, send_list)
+        # dist.all_to_all(output, send_list)
+        print('Go Send')
+        all_to_all(output, send_list)
         # dist.barrier()
         print(f"Rank {rank}: 进入消息接受阶段")
         for part_v in recv_map[rank]:
             # 接收特征来自其他GPU
             recv_feat = output[part_v]
-            dist.irecv(tensor=recv_feat, src=part_v).wait()
+            # dist.irecv(tensor=recv_feat, src=part_v).wait()
             # 更新接收节点特征
             feat[recv_map[rank][part_v]] = recv_feat
             print(f"Rank {rank}: 接收特征来自 {part_v}, recv_feat.shape={recv_feat.shape}")
