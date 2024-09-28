@@ -66,6 +66,20 @@ def init_process(rank, size, fn, backend='gloo'):
 # from buffer import LocalFeatureStore
 # feature_store = LocalFeatureStore()
 # 第4步：定义跨多分区消息传递的 GCN 层
+def communicate_grad(grad: torch.Tensor):
+    # start to send the grad and retrieve
+    self_rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    recv_list = [torch.tensor([0]) if i == self_rank else torch.empty_like(feat[send_map[self_rank][i]]) for i in range(world_size)]
+    send_list = [torch.tensor([0]) if i == self_rank else grad[recv_map[self_rank][i]] for i in range(world_size)]
+    
+    all_to_all(recv_list, send_list)
+    
+    for i in range(world_size):
+        if i == self_rank:
+            continue
+        grad[send_map[self_rank][i]] += recv_list[i]
+    return grad
 class GCNLayerWithPartition(nn.Module):
     def __init__(self, in_feats, out_feats, num_parts):
         super(GCNLayerWithPartition, self).__init__()
@@ -77,7 +91,9 @@ class GCNLayerWithPartition(nn.Module):
         dist.barrier()  # 等待所有进程同步
         print(f"Rank {rank}: 进入消息传递阶段")
         ops = []
+        feat.register_hook(communicate_grad)
         send_list = [torch.tensor([0.0])] * size
+        
         for part_v in send_map[rank]:
             # 发送特征到其他GPU
             send_feat = feat[send_map[rank][part_v]].clone()
