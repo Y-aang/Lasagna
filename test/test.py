@@ -6,17 +6,30 @@ from dgl.data import TUDataset
 from dgl.partition import metis_partition
 import torch.distributed as dist
 import os
+import torch.nn.init as init
 
 # 第1步：加载TUDataset中的PROTEINS数据集
 dataset = TUDataset(name='PROTEINS')
-
-# 取出第一个图和对应的标签
 graph, label = dataset[0]
 print(f"图信息：{graph}")
 
 # 初始化节点特征
-num_nodes = graph.num_nodes()
-feat = torch.randn(num_nodes, 3)  # 假设每个节点有3维特征
+# num_nodes = graph.num_nodes()
+# feat = torch.randn(num_nodes, 3)  # 假设每个节点有3维特征
+# graph.ndata['h'] = feat
+
+# edges = [(0, 1), (1, 2), (2, 3), (3, 0)]
+# u, v = zip(*edges)
+# graph = dgl.graph((u, v))
+# feat = torch.tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]], dtype=torch.float)
+# graph.ndata['h'] = feat
+# num_nodes = graph.num_nodes()
+
+num_nodes = 12
+edges = [(i, (i + 1) % num_nodes) for i in range(num_nodes)]  # 形成圆环
+u, v = zip(*edges)
+graph = dgl.graph((u, v))
+feat = torch.tensor([[1, 1, 1] for _ in range(num_nodes)], dtype=torch.float)
 graph.ndata['h'] = feat
 
 # 第2步：使用 Metis 将图分成 n 部分
@@ -41,7 +54,7 @@ for u, v in zip(graph.edges()[0], graph.edges()[1]):
         # u 需要发送特征给 v 的子图
         if part_v not in send_map[part_u]:
             send_map[part_u][part_v] = []
-        send_map[part_u][part_v].append(u.item())
+        send_map[part_u][part_v].append(u.item())       #38 ...
 
         # v 需要从 u 的子图接收特征
         if part_u not in recv_map[part_v]:
@@ -80,22 +93,25 @@ def communicate_grad(grad: torch.Tensor):
             continue
         grad[send_map[self_rank][i]] += recv_list[i]
     return grad
+
+
 class GCNLayerWithPartition(nn.Module):
     def __init__(self, in_feats, out_feats, num_parts):
         super(GCNLayerWithPartition, self).__init__()
         self.linear = nn.Linear(in_feats, out_feats)
         self.num_parts = num_parts
+        
+        init.constant_(self.linear.weight, 1)
+        init.constant_(self.linear.bias, 1)
 
     def forward(self, graph, feat, send_map, recv_map, rank, size):
-        # 1. 跨GPU消息传递：发送节点特征到接收节点
-        dist.barrier()  # 等待所有进程同步
+        dist.barrier()
         print(f"Rank {rank}: 进入消息传递阶段")
         ops = []
-        feat.register_hook(communicate_grad)
+        # feat.register_hook(communicate_grad)
         send_list = [torch.tensor([0.0])] * size
         
         for part_v in send_map[rank]:
-            # 发送特征到其他GPU
             send_feat = feat[send_map[rank][part_v]].clone()
             print(f"Rank {rank}: 发送特征到 {part_v}, send_feat.shape={send_feat.shape}")
             # dist.isend(tensor=send_feat, dst=part_v)
@@ -103,7 +119,6 @@ class GCNLayerWithPartition(nn.Module):
             # print("send:", dist.isend(tensor=send_feat, dst=part_v))
         output = [torch.empty(1)] * size
         for part_v in recv_map[rank]:
-            # 接收特征来自其他GPU
             recv_feat = torch.empty_like(feat[recv_map[rank][part_v]])
             output[part_v] = recv_feat
         # dist.all_to_all(output, send_list)
@@ -112,32 +127,24 @@ class GCNLayerWithPartition(nn.Module):
         # dist.barrier()
         print(f"Rank {rank}: 进入消息接受阶段")
         for part_v in recv_map[rank]:
-            # 接收特征来自其他GPU
             recv_feat = output[part_v]
             # dist.irecv(tensor=recv_feat, src=part_v).wait()
-            # 更新接收节点特征
             feat[recv_map[rank][part_v]] = recv_feat
             print(f"Rank {rank}: 接收特征来自 {part_v}, recv_feat.shape={recv_feat.shape}")
         print(f"Rank {rank}: Finish")
-        dist.barrier()  # 再次同步，确保所有进程完成通信
+        dist.barrier()
 
         print(f'Rank {rank}: process')
-        
-        # 2. 消息传递和特征聚合 (每个子图内进行)
         graph.ndata['h'] = feat
         graph.update_all(fn.copy_u('h', 'm'), fn.sum('m', 'h'))
-
-        # 3. 获取聚合后的特征
         h = graph.ndata.pop('h')
-
-        # 4. 线性变换
         h = self.linear(h)
         return h
 
 # 第5步：运行带有跨分区消息传递的GCN
 def run(rank, size):
     print(f"Rank {rank}: 进入run函数")
-    gcn_layer = GCNLayerWithPartition(in_feats=3, out_feats=2, num_parts=num_parts)
+    gcn_layer = GCNLayerWithPartition(in_feats=3, out_feats=3, num_parts=num_parts)
     output = gcn_layer(graph, feat, send_map, recv_map, rank, size)
 
     print(f"Rank {rank} 的输出特征：")
