@@ -15,7 +15,7 @@ class GCNLayer(nn.Module):
         init.constant_(self.linear.bias, 1)
     
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, graph, feat, send_map, recv_map, rank, size):
+    def forward(self, subgraph, feat, send_map, recv_map, rank, size):
         dist.barrier()
         print(f"Rank {rank}: 进入消息传递阶段")
         ops = []
@@ -45,10 +45,9 @@ class GCNLayer(nn.Module):
         print(f"Rank {rank}: Finish")
         dist.barrier()
 
-        print(f'Rank {rank}: process')
-        graph.ndata['h'] = feat
-        graph.update_all(fn.copy_u('h', 'm'), fn.sum('m', 'h'))
-        h = graph.ndata.pop('h')
+        subgraph.ndata['h'] = feat
+        subgraph.update_all(fn.copy_u('h', 'm'), fn.sum('m', 'h'))
+        h = subgraph.ndata.pop('h')
         h = self.linear(h)
         return h
     
