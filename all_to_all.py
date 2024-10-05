@@ -1,6 +1,7 @@
 import torch.distributed as dist
 from typing import List
 from torch import Tensor
+
 def all_to_all(recv_list: List[Tensor], send_list: List[Tensor]):
     self_rank = dist.get_rank()
     world_size = dist.get_world_size()
