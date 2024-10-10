@@ -13,7 +13,6 @@ import copy
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from layer import GCNLayer
 
-
 def add_external_nodes_and_edges(part_id, subgraph, recv_map, global_to_local_maps, original_graph, feature_dim=3):
     # 获取子图的全局节点索引
     global_node_ids = subgraph.ndata['_ID'].tolist()
@@ -60,7 +59,6 @@ def add_external_nodes_and_edges(part_id, subgraph, recv_map, global_to_local_ma
     
     # 将边添加到子图中
     subgraph.add_edges(external_edges_src, external_edges_dst)
-
 
 def update_global_to_local_maps(global_to_local_maps, recv_map):
     for rank, sub_map in recv_map.items():
@@ -137,7 +135,13 @@ feat = torch.tensor([
     [1, 11, 1],
     [1, 12, 1]
 ], dtype=torch.float)
+tag = torch.tensor([
+    [1], [2], [3], [4], [5], [6],
+    [7], [8], [9], [10], [11], [12]
+], dtype=torch.float)
 graph.ndata['h'] = feat
+graph.ndata['tag'] = tag
+print(graph.ndata)
 
 # 第2步：使用 Metis 将图分成 n 部分
 num_parts = 4  # 假设我们将图分成4部分
@@ -151,6 +155,7 @@ node_part = torch.empty(num_nodes, dtype=torch.int64)
 for part_id, subgraph in parts.items():
     global_node_ids = subgraph.ndata['_ID']
     subgraph.ndata['h'] = feat[global_node_ids]
+    subgraph.ndata['tag'] = tag[global_node_ids]
     global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(global_node_ids)}
     global_to_local_maps[part_id] = global_to_local
 
@@ -171,20 +176,11 @@ for u, v in zip(graph.edges()[0], graph.edges()[1]):
             send_map[part_u][part_v] = []
         if u.item() not in send_map[part_u][part_v]:
             send_map[part_u][part_v].append(u.item())
-        # if part_u not in send_map[part_v]:
-        #     send_map[part_v][part_u] = []
-        # if v.item() not in send_map[part_v][part_u]:
-        #     send_map[part_v][part_u].append(v.item())
-
         # v 需要从 u 的子图接收特征
         if part_u not in recv_map[part_v]:
             recv_map[part_v][part_u] = []
         if u.item() not in recv_map[part_v][part_u]:
             recv_map[part_v][part_u].append(u.item())
-        # if part_v not in recv_map[part_u]:
-        #     recv_map[part_u][part_v] = []
-        # if v.item() not in recv_map[part_u][part_v]:
-        #     recv_map[part_u][part_v].append(v.item())
 
 # 将send_map和recv_map转换为张量列表，方便后续处理
 for part in send_map:
@@ -225,13 +221,14 @@ def run(rank, size):
     # processing data
     # for data(graph structure & graph feature) in dataset:
     
+    # TODO: gain data from path
     
     gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
     output = gcn_layer.forward(parts[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
-    
 
     print(f"Rank {rank} 的输出特征：")
     print(output)
+    print('节点 target', parts[rank].ndata['tag'])
 
 if __name__ == "__main__":
     size = 4  # 使用4个进程 (每个GPU一个子图)
