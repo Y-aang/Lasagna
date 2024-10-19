@@ -30,13 +30,16 @@ class GCNLayer(nn.Module):
             # print("send:", dist.isend(tensor=send_feat, dst=part_v))
         output = [torch.empty(1)] * size
         for part_v in recv_map[rank]:
-            recv_feat = torch.empty_like(feat[recv_map[rank][part_v]])
+            recv_feat = torch.empty((len(recv_map[rank][part_v]), feat.shape[1])) # num_nodes_to_receive， feature_dim
             output[part_v] = recv_feat
         # dist.all_to_all(output, send_list)
         print('Go Send')
         all_to_all(output, send_list)
         # dist.barrier()
         print(f"Rank {rank}: 进入消息接受阶段")
+        
+        feat_expand = torch.empty(subgraph.num_nodes('_U') - feat.shape[0], feat.shape[1])
+        feat = torch.cat((feat, feat_expand), dim=0)
         for part_v in recv_map[rank]:
             recv_feat = output[part_v]
             # dist.irecv(tensor=recv_feat, src=part_v).wait()
@@ -45,9 +48,10 @@ class GCNLayer(nn.Module):
         print(f"Rank {rank}: Finish")
         dist.barrier()
 
-        subgraph.ndata['h'] = feat
-        subgraph.update_all(fn.copy_u('h', 'm'), fn.sum('m', 'h'))
-        h = subgraph.ndata.pop('h')
+        subgraph.nodes['_U'].data['h'] = feat
+        subgraph.update_all(fn.copy_u(u='h', out='m'),
+                                 fn.sum(msg='m', out='h'))
+        h = subgraph.nodes['_V'].data['h']
         h = self.linear(h)
         return h
     

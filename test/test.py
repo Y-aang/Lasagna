@@ -13,53 +13,6 @@ import copy
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from layer import GCNLayer
 
-def add_external_nodes_and_edges(part_id, subgraph, recv_map, global_to_local_maps, original_graph, feature_dim=3):
-    # 获取子图的全局节点索引
-    global_node_ids = subgraph.ndata['_ID'].tolist()
-    
-    # 获取 recv_map 中的外来节点列表
-    external_nodes = []
-    for nodes in recv_map.get(part_id, {}).values():
-        external_nodes.extend(nodes)
-    external_nodes = list(set(external_nodes))  # 去重
-
-    # 添加外来节点到子图中
-    num_external_nodes = len(external_nodes)
-    subgraph.add_nodes(num_external_nodes)
-    
-    # 更新 _ID 字段，记录全局索引
-    new_global_node_ids = global_node_ids + external_nodes
-    subgraph.ndata['_ID'] = torch.tensor(new_global_node_ids)
-
-    # 添加外来节点的边
-    external_edges_src = []
-    external_edges_dst = []
-
-    for external_node in external_nodes:
-        # 获取外来节点的所有入边
-        src_nodes_in, dst_nodes_in = original_graph.in_edges(external_node)
-        # 获取外来节点的所有出边
-        src_nodes_out, dst_nodes_out = original_graph.out_edges(external_node)
-        
-        # 合并入边和出边
-        for src, dst in zip(src_nodes_in, dst_nodes_in):
-            if src.item() in global_node_ids or dst.item() in global_node_ids:
-                external_edges_src.append(src.item())
-                external_edges_dst.append(dst.item())
-        
-        for src, dst in zip(src_nodes_out, dst_nodes_out):
-            if src.item() in global_node_ids or dst.item() in global_node_ids:
-                external_edges_src.append(src.item())
-                external_edges_dst.append(dst.item())
-    # 转换为接受序号
-    local_recv_map_rank = global_to_local_maps[part_id]
-    external_edges_src = [local_recv_map_rank.get(node) for node in external_edges_src]
-    external_edges_dst = [local_recv_map_rank.get(node) for node in external_edges_dst]
-
-    
-    # 将边添加到子图中
-    subgraph.add_edges(external_edges_src, external_edges_dst)
-
 def update_global_to_local_maps(global_to_local_maps, recv_map):
     for rank, sub_map in recv_map.items():
         # Gather all unique nodes in the current rank's sub_map
@@ -94,10 +47,32 @@ def convert_map_to_local(recv_map, global_to_local_maps):
 
     return local_recv_map
 
-
-
-
-
+def construct_graph(graph, parts, send_map, recv_map, global_to_local_maps):
+    u_subs, v_subs = [], []
+    g_list = []
+    for part_id, subgraph in parts.items():
+        u, v = subgraph.edges()
+        u_subs.append(u.tolist())
+        v_subs.append(v.tolist())
+    
+    for u, v in zip(graph.edges()[0], graph.edges()[1]):
+        part_u = node_part[u].item()
+        part_v = node_part[v].item()
+        
+        if part_u != part_v:
+            u_subs[part_v].append(global_to_local_maps[part_v][u.item()])
+            v_subs[part_v].append(global_to_local_maps[part_v][v.item()])
+            
+    for part_id, subgraph in parts.items():
+        num_nodes = subgraph.num_nodes()
+        g = dgl.heterograph({('_U', '_E', '_V'): (u_subs[part_id], v_subs[part_id])})
+        if g.num_nodes('_U') < num_nodes:
+            g.add_nodes(num_nodes - g.num_nodes('_U'), ntype='_U')
+        if g.num_nodes('_V') < num_nodes:
+            g.add_nodes(num_nodes - g.num_nodes('_V'), ntype='_V')
+        g_list.append(g)
+    
+    return g_list
 
 # 第1步：加载TUDataset中的PROTEINS数据集
 # dataset = TUDataset(name='PROTEINS')
@@ -197,15 +172,11 @@ for part in recv_map:
 # 更新global_to_local_maps
 global_to_local_maps = update_global_to_local_maps(global_to_local_maps, recv_map)
 
-# 为每个子图添加外来节点和边
-for part_id, subgraph in parts.items():
-    add_external_nodes_and_edges(part_id, subgraph, recv_map, global_to_local_maps, graph)
-
 # 获取local的recv和send map用于作为dataset的处理后输出
 local_send_map = convert_map_to_local(send_map, global_to_local_maps)
 local_recv_map = convert_map_to_local(recv_map, global_to_local_maps)
 
-
+g_list = construct_graph(graph, parts, send_map, recv_map, global_to_local_maps)
 
 from all_to_all import all_to_all
 # 初始化分布式环境
@@ -227,10 +198,11 @@ def run(rank, size):
     # TODO: gain data from path
     
     gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
-    output = gcn_layer.forward(parts[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
+    output = gcn_layer.forward(g_list[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
 
     print(f"Rank {rank} 的输出特征：")
     print(output)
+    print(f"Rank {rank} 节点的全局序号: { parts[rank].ndata['_ID'].tolist() }")
     print('节点 target', parts[rank].ndata['tag'])
 
 if __name__ == "__main__":
