@@ -3,7 +3,7 @@ import torch
 import torch.distributed as dist
 import torch.nn.init as init
 import dgl.function as fn
-from all_to_all import all_to_all
+from helper.all_to_all import all_to_all
 
 class GCNLayer(nn.Module):
     def __init__(self, in_feats, out_feats, num_parts):
@@ -25,14 +25,11 @@ class GCNLayer(nn.Module):
         for part_v in send_map[rank]:
             send_feat = feat[send_map[rank][part_v]].clone()
             print(f"Rank {rank}: 发送特征到 {part_v}, send_feat.shape={send_feat.shape}")
-            # dist.isend(tensor=send_feat, dst=part_v)
             send_list[part_v] = send_feat
-            # print("send:", dist.isend(tensor=send_feat, dst=part_v))
         output = [torch.empty(1)] * size
         for part_v in recv_map[rank]:
             recv_feat = torch.empty((len(recv_map[rank][part_v]), feat.shape[1])) # num_nodes_to_receive， feature_dim
             output[part_v] = recv_feat
-        # dist.all_to_all(output, send_list)
         print('Go Send')
         all_to_all(output, send_list)
         # dist.barrier()
@@ -42,7 +39,6 @@ class GCNLayer(nn.Module):
         feat = torch.cat((feat, feat_expand), dim=0)
         for part_v in recv_map[rank]:
             recv_feat = output[part_v]
-            # dist.irecv(tensor=recv_feat, src=part_v).wait()
             feat[recv_map[rank][part_v]] = recv_feat
             print(f"Rank {rank}: 接收特征来自 {part_v}, recv_feat.shape={recv_feat.shape}")
         print(f"Rank {rank}: Finish")

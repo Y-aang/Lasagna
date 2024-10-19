@@ -8,10 +8,10 @@ import torch.distributed as dist
 import os, sys
 import torch.nn.init as init
 import copy
-# from all_to_all import all_to_all
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from layer import GCNLayer
+from module.layer import GCNLayer
+from helper.all_to_all import all_to_all
 
 def update_global_to_local_maps(global_to_local_maps, recv_map):
     for rank, sub_map in recv_map.items():
@@ -178,7 +178,6 @@ local_recv_map = convert_map_to_local(recv_map, global_to_local_maps)
 
 g_list = construct_graph(graph, parts, send_map, recv_map, global_to_local_maps)
 
-from all_to_all import all_to_all
 # 初始化分布式环境
 def init_process(rank, size, fn, backend='gloo'):
     os.environ['MASTER_ADDR'] = 'localhost'
