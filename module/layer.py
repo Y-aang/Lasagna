@@ -5,20 +5,13 @@ import torch.nn.init as init
 import dgl.function as fn
 from helper.all_to_all import all_to_all
 
-class GCNLayer(nn.Module):
-    def __init__(self, in_feats, out_feats, num_parts):
-        super(GCNLayer, self).__init__()
-        self.linear = nn.Linear(in_feats, out_feats)
-        self.num_parts = num_parts
-        
-        init.constant_(self.linear.weight, 1)
-        init.constant_(self.linear.bias, 1)
+class GNNBase(nn.Module):
+    def __init__(self):
+        super(GNNBase, self).__init__()
     
-    # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat, send_map, recv_map, rank, size):
+    def distributed_comm(self, subgraph, feat, send_map, recv_map, rank, size):
         dist.barrier()
         print(f"Rank {rank}: 进入消息传递阶段")
-        ops = []
         # feat.register_hook(communicate_grad)
         send_list = [torch.tensor([0.0])] * size
         
@@ -32,7 +25,6 @@ class GCNLayer(nn.Module):
             output[part_v] = recv_feat
         print('Go Send')
         all_to_all(output, send_list)
-        # dist.barrier()
         print(f"Rank {rank}: 进入消息接受阶段")
         
         feat_expand = torch.empty(subgraph.num_nodes('_U') - feat.shape[0], feat.shape[1])
@@ -43,7 +35,20 @@ class GCNLayer(nn.Module):
             print(f"Rank {rank}: 接收特征来自 {part_v}, recv_feat.shape={recv_feat.shape}")
         print(f"Rank {rank}: Finish")
         dist.barrier()
+        return feat
 
+class GCNLayer(GNNBase):
+    def __init__(self, in_feats, out_feats, num_parts):
+        super(GCNLayer, self).__init__()
+        self.linear = nn.Linear(in_feats, out_feats)
+        self.num_parts = num_parts
+        
+        init.constant_(self.linear.weight, 1)
+        init.constant_(self.linear.bias, 1)
+    
+    # def forward(self, graphStructure, subgraphFeature):
+    def forward(self, subgraph, feat, send_map, recv_map, rank, size):
+        feat = super().distributed_comm(subgraph, feat, send_map, recv_map, rank, size)
         subgraph.nodes['_U'].data['h'] = feat
         subgraph.update_all(fn.copy_u(u='h', out='m'),
                                  fn.sum(msg='m', out='h'))
