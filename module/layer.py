@@ -57,19 +57,3 @@ class GCNLayer(GNNBase):
         h = subgraph.nodes['_V'].data['h']
         h = self.linear(h)
         return h
-    
-    
-def communicate_grad(grad: torch.Tensor):
-    # start to send the grad and retrieve
-    self_rank = dist.get_rank()
-    world_size = dist.get_world_size()
-    recv_list = [torch.tensor([0]) if i == self_rank else torch.empty_like(feat[send_map[self_rank][i]]) for i in range(world_size)]
-    send_list = [torch.tensor([0]) if i == self_rank else grad[recv_map[self_rank][i]] for i in range(world_size)]
-    
-    all_to_all(recv_list, send_list)
-    
-    for i in range(world_size):
-        if i == self_rank:
-            continue
-        grad[send_map[self_rank][i]] += recv_list[i]
-    return grad

@@ -13,6 +13,7 @@ import copy
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.layer import GCNLayer
 from helper.all_to_all import all_to_all
+from helper.utils import register_hook_for_model
 
 def update_global_to_local_maps(global_to_local_maps, recv_map):
     for rank, sub_map in recv_map.items():
@@ -195,6 +196,7 @@ def run(rank, size):
     # TODO: gain data from path
     
     gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
+    register_hook_for_model(gcn_layer, rank)
     output = gcn_layer.forward(g_list[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
 
     print("Rank", rank, '\n',
