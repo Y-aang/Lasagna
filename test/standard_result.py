@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import dgl
 import dgl.function as fn
 
@@ -28,6 +29,22 @@ features = torch.tensor([
     [1, 12, 1]
 ], dtype=torch.float32)
 
+tag = torch.tensor([
+    [19, 19, 19],
+    [9, 9, 9],
+    [11, 11, 11],
+    [13, 13, 13],
+    [15, 15, 15],
+    [17, 17, 17],
+    [19, 19, 19],
+    [21, 21, 21],
+    [23, 23, 23],
+    [25, 25, 25],
+    [27, 27, 27],
+    [17, 17, 17]
+], dtype=torch.float)
+tag += 1
+
 # 定义一层简单的 GCN，不进行归一化，只进行特征求和
 class SimpleGCN(nn.Module):
     def __init__(self, in_feats, out_feats):
@@ -53,9 +70,17 @@ class SimpleGCN(nn.Module):
 gcn = SimpleGCN(in_feats=3, out_feats=3)
 
 # 进行前向传播
-with torch.no_grad():
-    output = gcn(graph, features)
+output = gcn(graph, features)
+criterion = nn.L1Loss()
+optimizer = optim.SGD(gcn.parameters(), lr=1)
+loss = criterion(output, tag)
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
 
 # 打印输出结果
 print("Output features after one GCN layer with weights initialized to 1 (using sum):")
 print(output)
+
+print("Output weights:")
+print(gcn.linear.weight, gcn.linear.bias)

@@ -196,7 +196,7 @@ def run(rank, size):
     # TODO: gain data from path
     
     gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
-    register_hook_for_model(gcn_layer, rank)
+    register_hook_for_model(gcn_layer, rank, size)
     output = gcn_layer.forward(g_list[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
 
     print("Rank", rank, '\n',
