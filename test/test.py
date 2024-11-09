@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
+import torch.optim as optim
+import torch.nn.init as init
 import dgl
 import dgl.function as fn
 from dgl.data import TUDataset
 from dgl.partition import metis_partition
 import torch.distributed as dist
 import os, sys
-import torch.nn.init as init
 import copy
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -99,23 +100,20 @@ feat = torch.tensor([
     [1, 12, 1]
 ], dtype=torch.float)
 tag = torch.tensor([
-    [1], [2], [3], [4], [5], [6],
-    [7], [8], [9], [10], [11], [12]
+    [19, 19, 19],
+    [9, 9, 9],
+    [11, 11, 11],
+    [13, 13, 13],
+    [15, 15, 15],
+    [17, 17, 17],
+    [19, 19, 19],
+    [21, 21, 21],
+    [23, 23, 23],
+    [25, 25, 25],
+    [27, 27, 27],
+    [17, 17, 17]
 ], dtype=torch.float)
-tag = torch.tensor([
-    [1, 2, 1],
-    [1, 3, 1],
-    [1, 4, 1],
-    [1, 5, 1],
-    [1, 6, 1],
-    [1, 7, 1],
-    [1, 8, 1],
-    [1, 9, 1],
-    [1, 10, 1],
-    [1, 11, 1],
-    [1, 12, 1],
-    [1, 13, 1]
-], dtype=torch.float)
+tag += 1
 
 graph.ndata['h'] = feat
 graph.ndata['tag'] = tag
@@ -199,10 +197,23 @@ def run(rank, size):
     gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
     output = gcn_layer.forward(g_list[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
 
-    print(f"Rank {rank} 的输出特征：")
-    print(output)
-    print(f"Rank {rank} 节点的全局序号: { parts[rank].ndata['_ID'].tolist() }")
-    print('节点 target', parts[rank].ndata['tag'])
+    print("Rank", rank, '\n',
+        "节点的全局序号:", parts[rank].ndata['_ID'].tolist(), '\n',
+        "输出特征：", output, '\n',
+        "节点 target:", parts[rank].ndata['tag'])
+
+    
+    criterion = nn.L1Loss()
+    optimizer = optim.SGD(gcn_layer.parameters(), lr=1)
+    loss = criterion(output, parts[rank].ndata['tag'])
+    # print(f"Rank {rank} 的loss： {loss}")
+    # print(f"Rank {rank} 训练前的参数： {gcn_layer.linear.weight} {gcn_layer.linear.bias}")
+    
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    print(f"Rank {rank} 训练后的参数： {gcn_layer.linear.weight} {gcn_layer.linear.bias}")
+
 
 if __name__ == "__main__":
     size = 4  # 使用4个进程 (每个GPU一个子图)
