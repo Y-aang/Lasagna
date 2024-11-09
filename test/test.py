@@ -81,7 +81,7 @@ def construct_graph(graph, parts, send_map, recv_map, global_to_local_maps):
 # graph, label = dataset[0]
 # print(f"图信息：{graph}")
 
-num_nodes = 12
+num_nodes = 13
 # edges = [(i, (i + 1) % num_nodes) for i in range(num_nodes)]  # 形成圆环
 edges = [(i, (i + 1) % num_nodes) for i in range(num_nodes)] + [((i + 1) % num_nodes, i) for i in range(num_nodes)]  # 形成圆环
 u, v = zip(*edges)
@@ -98,7 +98,8 @@ feat = torch.tensor([
     [1, 9, 1],
     [1, 10, 1],
     [1, 11, 1],
-    [1, 12, 1]
+    [1, 12, 1],
+    [1, 13, 1],
 ], dtype=torch.float)
 tag = torch.tensor([
     [19, 19, 19],
@@ -112,7 +113,8 @@ tag = torch.tensor([
     [23, 23, 23],
     [25, 25, 25],
     [27, 27, 27],
-    [17, 17, 17]
+    [17, 17, 17],
+    [17, 17, 17],
 ], dtype=torch.float)
 tag += 1
 
@@ -205,7 +207,7 @@ def run(rank, size):
         "节点 target:", parts[rank].ndata['tag'])
 
     
-    criterion = nn.L1Loss()
+    criterion = nn.L1Loss(reduction='sum')
     optimizer = optim.SGD(gcn_layer.parameters(), lr=1)
     loss = criterion(output, parts[rank].ndata['tag'])
     # print(f"Rank {rank} 的loss： {loss}")

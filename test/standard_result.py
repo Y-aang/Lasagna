@@ -8,7 +8,7 @@ import dgl.function as fn
 torch.manual_seed(42)
 
 # 创建一个具有 12 个节点的环形图
-num_nodes = 12
+num_nodes = 13
 edges = [(i, (i + 1) % num_nodes) for i in range(num_nodes)] + [((i + 1) % num_nodes, i) for i in range(num_nodes)]
 u, v = zip(*edges)
 graph = dgl.graph((torch.tensor(u), torch.tensor(v)))
@@ -26,7 +26,8 @@ features = torch.tensor([
     [1, 9, 1],
     [1, 10, 1],
     [1, 11, 1],
-    [1, 12, 1]
+    [1, 12, 1],
+    [1, 13, 1],
 ], dtype=torch.float32)
 
 tag = torch.tensor([
@@ -41,7 +42,8 @@ tag = torch.tensor([
     [23, 23, 23],
     [25, 25, 25],
     [27, 27, 27],
-    [17, 17, 17]
+    [17, 17, 17],
+    [17, 17, 17],
 ], dtype=torch.float)
 tag += 1
 
@@ -71,7 +73,7 @@ gcn = SimpleGCN(in_feats=3, out_feats=3)
 
 # 进行前向传播
 output = gcn(graph, features)
-criterion = nn.L1Loss()
+criterion = nn.L1Loss(reduction='sum')
 optimizer = optim.SGD(gcn.parameters(), lr=1)
 loss = criterion(output, tag)
 optimizer.zero_grad()

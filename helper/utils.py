@@ -10,8 +10,7 @@ def parameter_hook(rank, size):
         
         recv_list[rank] = grad
         grad_sum = sum(recv_list)
-        grad_avg = grad_sum / size
-        return grad_avg
+        return grad_sum
     return communicate_grad
 
 def register_hook_for_model(model, rank, size):
