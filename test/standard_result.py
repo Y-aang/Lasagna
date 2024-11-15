@@ -72,6 +72,7 @@ class SimpleGCN(nn.Module):
 gcn = SimpleGCN(in_feats=3, out_feats=3)
 
 # 进行前向传播
+features.requires_grad_(True)
 output = gcn(graph, features)
 criterion = nn.L1Loss(reduction='sum')
 optimizer = optim.SGD(gcn.parameters(), lr=1)
@@ -86,3 +87,6 @@ print(output)
 
 print("Output weights:")
 print(gcn.linear.weight, gcn.linear.bias)
+
+print("Feat grad:")
+print(features.grad)

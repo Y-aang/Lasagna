@@ -4,6 +4,7 @@ import torch.distributed as dist
 import torch.nn.init as init
 import dgl.function as fn
 from helper.all_to_all import all_to_all
+from helper.utils import feat_hook
 
 class GNNBase(nn.Module):
     def __init__(self):
@@ -15,6 +16,9 @@ class GNNBase(nn.Module):
         send_list, recv_list = self.__prepare_comm_data(feat, send_map, recv_map, rank, size)
         all_to_all(recv_list, send_list)
         feat = self.__process_recv_data(subgraph, feat, recv_map, recv_list, rank)
+        
+        if feat.requires_grad:
+            feat.register_hook(feat_hook(send_map, recv_map, rank, size))
         
         dist.barrier()
         return feat

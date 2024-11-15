@@ -17,6 +17,21 @@ def register_hook_for_model(model, rank, size):
     for param in model.parameters():
         if param.requires_grad:
             param.register_hook(parameter_hook(rank, size))
+            
+def feat_hook(send_map, recv_map, rank, size):
+    def communicate_grad(grad):
+        send_list = [torch.tensor([0.0])] * size
+        recv_list = [torch.tensor([0.0])] * size
+        for src, feat_idx in recv_map[rank].items():
+            send_list[src] = grad[feat_idx]
+        for tgt, feat_idx in send_map[rank].items():
+            recv_list[tgt] = torch.empty((len(feat_idx), grad.shape[1]))
+        all_to_all(recv_list, send_list)
+        for tgt, feat_idx in send_map[rank].items():
+            grad[feat_idx] = grad[feat_idx] + recv_list[tgt]
+            
+        return grad
+    return communicate_grad
 
 
 # def communicate_grad(grad: torch.Tensor):
