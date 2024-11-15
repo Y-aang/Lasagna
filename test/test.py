@@ -197,25 +197,23 @@ def run(rank, size):
     # for data(graph structure & graph feature) in dataset:
     
     # TODO: gain data from path
-    
     # gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
     gcn_module = myGCN(in_feats=3, out_feats=3, num_parts=num_parts)
     register_hook_for_model(gcn_module.gcnLayer1, rank, size)
+    register_hook_for_model(gcn_module.gcnLayer2, rank, size)
+    
     parts[rank].ndata['h'].requires_grad_(True)
     output = gcn_module.forward(g_list[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
-
     print("Rank", rank, '\n',
         "节点的全局序号:", parts[rank].ndata['_ID'].tolist(), '\n',
         "输出特征：", output, '\n',
         "节点 target:", parts[rank].ndata['tag'],
     )
-
     criterion = nn.L1Loss(reduction='sum')
     optimizer = optim.SGD(gcn_module.parameters(), lr=1)
     loss = criterion(output, parts[rank].ndata['tag'])
     # print(f"Rank {rank} 的loss： {loss}")
     # print(f"Rank {rank} 训练前的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias}")
-    
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()

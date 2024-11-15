@@ -49,27 +49,37 @@ tag += 1
 
 # 定义一层简单的 GCN，不进行归一化，只进行特征求和
 class SimpleGCN(nn.Module):
-    def __init__(self, in_feats, out_feats):
+    def __init__(self, in_feats, hidden_feats, out_feats):
         super(SimpleGCN, self).__init__()
-        # 定义一个线性层
-        self.linear = nn.Linear(in_feats, out_feats)
-        # 手动初始化权重为全 1
-        # nn.init.constant_(self.linear.weight, 1.0)
-        nn.init.constant_(self.linear.weight, 1)
-        nn.init.constant_(self.linear.bias, 1)
+        # 第一层 GCN
+        self.gcn1 = nn.Linear(in_feats, hidden_feats)
+        nn.init.constant_(self.gcn1.weight, 1)
+        nn.init.constant_(self.gcn1.bias, 1)
+        
+        # 第二层 GCN
+        self.gcn2 = nn.Linear(hidden_feats, out_feats)
+        nn.init.constant_(self.gcn2.weight, 1)
+        nn.init.constant_(self.gcn2.bias, 1)
 
     def forward(self, graph, features):
         with graph.local_scope():
-            # 聚合邻居特征：简单求和，不进行归一化
+            # 第一层 GCN
             graph.ndata['h'] = features
             graph.update_all(fn.copy_u('h', 'm'), fn.sum('m', 'h'))
-            # 获取聚合后的特征
             h = graph.ndata['h']
-            # 应用线性变换
-            return self.linear(h)
+            h = self.gcn1(h)
+            h = torch.relu(h)  # 激活函数
+            
+            # 第二层 GCN
+            graph.ndata['h'] = h
+            graph.update_all(fn.copy_u('h', 'm'), fn.sum('m', 'h'))
+            h = graph.ndata['h']
+            h = self.gcn2(h)
+            
+            return h
 
 # 实例化 GCN 模型
-gcn = SimpleGCN(in_feats=3, out_feats=3)
+gcn = SimpleGCN(in_feats=3, hidden_feats=3, out_feats=3)
 
 # 进行前向传播
 features.requires_grad_(True)
@@ -86,7 +96,7 @@ print("Output features after one GCN layer with weights initialized to 1 (using 
 print(output)
 
 print("Output weights:")
-print(gcn.linear.weight, gcn.linear.bias)
+print(gcn.gcn1.weight, gcn.gcn1.bias)
 
 print("Feat grad:")
 print(features.grad)
