@@ -12,6 +12,7 @@ import copy
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.layer import GCNLayer
+from module.model import myGCN
 from helper.all_to_all import all_to_all
 from helper.utils import register_hook_for_model
 
@@ -197,27 +198,28 @@ def run(rank, size):
     
     # TODO: gain data from path
     
-    gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
-    register_hook_for_model(gcn_layer, rank, size)
+    # gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
+    gcn_module = myGCN(in_feats=3, out_feats=3, num_parts=num_parts)
+    register_hook_for_model(gcn_module.gcnLayer1, rank, size)
     parts[rank].ndata['h'].requires_grad_(True)
-    output = gcn_layer.forward(g_list[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
+    output = gcn_module.forward(g_list[rank], parts[rank].ndata['h'], local_send_map, local_recv_map, rank, size)
 
     print("Rank", rank, '\n',
         "节点的全局序号:", parts[rank].ndata['_ID'].tolist(), '\n',
-        # "输出特征：", output, '\n',
-        # "节点 target:", parts[rank].ndata['tag'],
+        "输出特征：", output, '\n',
+        "节点 target:", parts[rank].ndata['tag'],
     )
 
     criterion = nn.L1Loss(reduction='sum')
-    optimizer = optim.SGD(gcn_layer.parameters(), lr=1)
+    optimizer = optim.SGD(gcn_module.parameters(), lr=1)
     loss = criterion(output, parts[rank].ndata['tag'])
     # print(f"Rank {rank} 的loss： {loss}")
-    # print(f"Rank {rank} 训练前的参数： {gcn_layer.linear.weight} {gcn_layer.linear.bias}")
+    # print(f"Rank {rank} 训练前的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias}")
     
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-    # print(f"Rank {rank} 训练后的参数： {gcn_layer.linear.weight} {gcn_layer.linear.bias}")
+    print(f"Rank {rank} 训练后的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias}")
     print(f"Rank {rank} 训练后feat的梯度： {parts[rank].ndata['h'].grad}")
 
 
