@@ -72,6 +72,12 @@ class DevDataset(Dataset):
         for idx, data in enumerate(dataset):
             print("processing No. ", idx)
             graph = data[0]
+            src, dst = graph.edges()
+            src, dst = graph.edges()
+            has_self_loops = (src == dst).all()
+            if not has_self_loops:
+                graph = dgl.add_self_loop(graph)
+            
             if graph.is_homogeneous:
                 try:
                     self.prepare_feat_tag(graph)
@@ -103,8 +109,8 @@ class DevDataset(Dataset):
         # process distribution feature, node ranking and global_to_local_maps
         for part_id, subgraph in parts.items():
             global_node_ids = subgraph.ndata['_ID']
-            subgraph.ndata['h'] = graph.ndata['feat'][global_node_ids]
-            subgraph.ndata['tag'] = graph.ndata['tag'][global_node_ids]
+            subgraph.ndata['h'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
+            subgraph.ndata['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
             global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(global_node_ids)}
             global_to_local_maps[part_id] = global_to_local
             

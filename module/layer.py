@@ -15,12 +15,7 @@ class GNNBase(nn.Module):
         # feat.register_hook(communicate_grad)
         send_list, recv_list = self.__prepare_comm_data(feat, send_map, recv_map, rank, size)
         
-        print(f"Rank {rank}:\n send_list {send_list} \n recv_list {recv_list} ")
         dist.barrier()
-        print(f"Rank {rank}:\n"
-                f"  send_list: {send_list[0].shape}, {send_list[1].shape}, {send_list[2].shape}, {send_list[3].shape}\n"
-                f"  recv_list: {recv_list[0].shape}, {recv_list[1].shape}, {recv_list[2].shape}, {recv_list[3].shape}")
-        
         all_to_all(recv_list, send_list)
         feat = self.__process_recv_data(subgraph, feat, recv_map, recv_list, rank)
         

@@ -41,16 +41,14 @@ def run(rank, size):
     register_hook_for_model(gcn_module.gcnLayer1, rank, size)
     register_hook_for_model(gcn_module.gcnLayer2, rank, size)
     criterion = nn.L1Loss(reduction='sum')
-    optimizer = optim.SGD(gcn_module.parameters(), lr=1)
+    optimizer = optim.SGD(gcn_module.parameters(), lr=0.001)
     train_dataset = DevDataset("proteins", datasetPath=None)
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
     
-    for epoch in range(2):
+    for epoch in range(1):
         gcn_module.train()
         total_loss = 0
-        print(f"Rank {rank} hello 1")
         for part, send_map, recv_map, g_structure in train_loader:
-            print(f"Rank {rank} hello 2")
             part.ndata['h'].requires_grad_(True)
             output = gcn_module.forward(g_structure, part.ndata['h'], send_map, recv_map, rank, size)
             print("Rank", rank, '\n',
@@ -69,6 +67,8 @@ def run(rank, size):
 
 
 if __name__ == "__main__":
+    torch.set_default_dtype(torch.float32)
+
     size = 4  # 使用4个进程 (每个GPU一个子图)
     torch.multiprocessing.set_start_method('spawn')
     processes = []

@@ -10,11 +10,11 @@ def all_to_all(recv_list: List[Tensor], send_list: List[Tensor]):
     dist.barrier()
     for i in range(1, world_size):
         target = (self_rank + i) % world_size
-        print(f'rsend from {self_rank} to {target} {send_list[target].shape}')
+        # print(f'rsend from {self_rank} to {target} {send_list[target].shape}')
         feature = dist.isend(send_list[target], target)
         
         recv_target = (self_rank - i) % world_size
-        print(f'recieve {self_rank} from {recv_target} {recv_list[recv_target].shape}')
+        # print(f'recieve {self_rank} from {recv_target} {recv_list[recv_target].shape}')
         recv = dist.irecv(recv_list[recv_target], recv_target)
         feature.wait()
         recv.wait()

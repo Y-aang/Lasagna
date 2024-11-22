@@ -9,7 +9,6 @@ class myGCN(nn.Module):
     
     # def forward(self, graphStructure, subgraphFeature):
     def forward(self, subgraph, feat, send_map, recv_map, rank, size):
-        print(f"Rank {rank} forward into")
         logits = self.gcnLayer1.forward(subgraph, feat, send_map, recv_map, rank, size)
         logits = self.gcnLayer2.forward(subgraph, logits, send_map, recv_map, rank, size)
         return logits
@@ -22,7 +21,6 @@ class GCNDataset(nn.Module):
     
     # def forward(self, graphStructure, subgraphFeature):
     def forward(self, subgraph, feat, send_map, recv_map, rank, size):
-        print(f"Rank {rank} forward into")
         logits = self.gcnLayer1.forward(subgraph, feat, send_map, recv_map, rank, size)
-        logits = self.gcnLayer2.forward(subgraph, logits, send_map, recv_map, rank, size)
+        # logits = self.gcnLayer2.forward(subgraph, logits, send_map, recv_map, rank, size)
         return logits
