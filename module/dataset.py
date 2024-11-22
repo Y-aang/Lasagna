@@ -29,7 +29,7 @@ class DevDataset(Dataset):
             
         meta_path = os.path.join(self.savePath, f'meta_data.pkl')
         if self.rank == 0:
-            self.group_and_partition(dataset)
+            self.__group_and_partition(dataset)
             
             os.makedirs(os.path.dirname(meta_path), exist_ok=True)
             with open(meta_path, 'wb') as f:
@@ -63,29 +63,23 @@ class DevDataset(Dataset):
         g_structure = g_structures[0]
 
         return part, send_map, recv_map, g_structure
-    
-    def group_and_partition(self, dataset):
+
+    def __group_and_partition(self, dataset):
         print("process 0 processing data...")
 
         k = 4
 
         for idx, data in enumerate(dataset):
-            print("processing No. ", idx)
-            graph = data[0]
-            src, dst = graph.edges()
-            src, dst = graph.edges()
-            has_self_loops = (src == dst).all()
-            if not has_self_loops:
-                graph = dgl.add_self_loop(graph)
+            graph = self.__add_self_loop(data)
             
             if graph.is_homogeneous:
                 try:
-                    self.prepare_feat_tag(graph)
-                    parts, g_list, send_map, recv_map= self.process_graph(graph)
+                    self.__prepare_feat_tag(graph)
+                    parts, g_list, send_map, recv_map= self.__process_graph(graph)
                     
                     graph_save_path = os.path.join(self.savePath, f'graph_{idx}')
                     os.makedirs(graph_save_path, exist_ok=True)
-                    self.save_graph(parts, g_list, send_map, recv_map, graph_save_path, k=4)
+                    self.__save_graph(parts, g_list, send_map, recv_map, graph_save_path, k=4)
                     self.length += 1
                     print(f"Partitioning successed for graph_{idx}")
                 except Exception as e:
@@ -93,11 +87,20 @@ class DevDataset(Dataset):
             else:
                 print(f"Graph {idx} is not homogeneous, skipping.")
 
-    def prepare_feat_tag(self, graph):
+    def __add_self_loop(self, data):
+        graph = data[0]
+        src, dst = graph.edges()
+        src, dst = graph.edges()
+        has_self_loops = (src == dst).all()
+        if not has_self_loops:
+            graph = dgl.add_self_loop(graph)
+        return graph
+
+    def __prepare_feat_tag(self, graph):
         graph.ndata['feat'] = copy.deepcopy(graph.ndata['node_attr'])
         graph.ndata['tag'] = copy.deepcopy(graph.ndata['node_labels'])
     
-    def process_graph(self, graph):     # one graph prepare process
+    def __process_graph(self, graph):     # one graph prepare process
         # split the graph in to 4 parts using metis_partition
         
         num_parts = 4
@@ -158,7 +161,7 @@ class DevDataset(Dataset):
         return parts, g_list, local_send_map, local_recv_map
         
         
-    def save_graph(self, parts, g_list, send_map, recv_map, graph_save_path, k=4):
+    def __save_graph(self, parts, g_list, send_map, recv_map, graph_save_path, k=4):
         for i in range(k):
             dgl.save_graphs(os.path.join(graph_save_path, f'part_{i}.bin'), [parts[i]])
             torch.save(send_map, os.path.join(graph_save_path, f'send_map_{i}.pt'))
@@ -235,52 +238,52 @@ def custom_collate_fn(batch):
 
 
 
-class LasagnaDataset:
+# class LasagnaDataset:
     
-    def __init__(self, datasetName, datasetPath, nodeNumber=None, ):
-        self.rank = dist.get_rank()
-        if datasetName == 'reddit':
-            dataset = RedditDataset(raw_dir=datasetPath)
-        elif datasetName == 'yelp':
-            dataset = YelpDataset(raw_dir=datasetPath)
-        elif datasetName == 'proteins':
-            dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath) 
+#     def __init__(self, datasetName, datasetPath, nodeNumber=None, ):
+#         self.rank = dist.get_rank()
+#         if datasetName == 'reddit':
+#             dataset = RedditDataset(raw_dir=datasetPath)
+#         elif datasetName == 'yelp':
+#             dataset = YelpDataset(raw_dir=datasetPath)
+#         elif datasetName == 'proteins':
+#             dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath) 
             
-        if self.rank == 0:
-            self.group_and_partition(dataset, savePath="./dataset")
-            dist.barrier()
-        else:
-            print(dist.get_rank(), 'waiting...')
-            dist.barrier()
+#         if self.rank == 0:
+#             self.group_and_partition(dataset, savePath="./dataset")
+#             dist.barrier()
+#         else:
+#             print(dist.get_rank(), 'waiting...')
+#             dist.barrier()
             
-        print(dist.get_rank(), 'processing...')
+#         print(dist.get_rank(), 'processing...')
         
-    def __len__(self):
-        pass
+#     def __len__(self):
+#         pass
     
-    def __getitem__(self, index):
-        pass
+#     def __getitem__(self, index):
+#         pass
     
-    def group_and_partition(self, dataset, savePath):
-        print("process 0 processing data...")
+#     def group_and_partition(self, dataset, savePath):
+#         print("process 0 processing data...")
 
-        k = 4
-        os.makedirs(savePath, exist_ok=True)
+#         k = 4
+#         os.makedirs(savePath, exist_ok=True)
 
-        for idx, data in enumerate(dataset):
-            print("processing No. ", idx)
-            graph = data[0]
-            if graph.is_homogeneous:
-                try:
-                    partitions = metis_partition(graph, k)
+#         for idx, data in enumerate(dataset):
+#             print("processing No. ", idx)
+#             graph = data[0]
+#             if graph.is_homogeneous:
+#                 try:
+#                     partitions = metis_partition(graph, k)
                     
-                    graph_savePath = os.path.join(savePath, f'graph_{idx}')
-                    os.makedirs(graph_savePath, exist_ok=True)
+#                     graph_savePath = os.path.join(savePath, f'graph_{idx}')
+#                     os.makedirs(graph_savePath, exist_ok=True)
                     
-                    for i in range(k):
-                        part = partitions[i]
-                        dgl.save_graphs(os.path.join(graph_savePath, f'part_{i}.bin'), [part])
-                except Exception as e:
-                    print(f"Error partitioning graph {idx}: {e}")
-            else:
-                print(f"Graph {idx} is not homogeneous, skipping.")
+#                     for i in range(k):
+#                         part = partitions[i]
+#                         dgl.save_graphs(os.path.join(graph_savePath, f'part_{i}.bin'), [part])
+#                 except Exception as e:
+#                     print(f"Error partitioning graph {idx}: {e}")
+#             else:
+#                 print(f"Graph {idx} is not homogeneous, skipping.")
