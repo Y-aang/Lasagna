@@ -55,7 +55,8 @@ class GCNLayer(GNNBase):
         init.constant_(self.linear.bias, 1)
     
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat, send_map, recv_map, rank, size):
+    def forward(self, subgraph, feat, norm, send_map, recv_map, rank, size):
+        feat = feat * norm
         feat = super().distributed_comm(subgraph, feat, send_map, recv_map, rank, size)
         subgraph.nodes['_U'].data['h'] = feat
         subgraph.update_all(fn.copy_u(u='h', out='m'),

@@ -20,7 +20,7 @@ class GCNDataset(nn.Module):
         self.gcnLayer2 = GCNLayer(in_feats=3, out_feats=1, num_parts=num_parts)
     
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat, send_map, recv_map, rank, size):
-        logits = self.gcnLayer1.forward(subgraph, feat, send_map, recv_map, rank, size)
+    def forward(self, subgraph, feat, norm, send_map, recv_map, rank, size):
+        logits = self.gcnLayer1.forward(subgraph, feat, norm, send_map, recv_map, rank, size)
         # logits = self.gcnLayer2.forward(subgraph, logits, send_map, recv_map, rank, size)
         return logits

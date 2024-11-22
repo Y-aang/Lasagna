@@ -12,7 +12,6 @@ import copy
 import pickle
 
 
-
 class DevDataset(Dataset):
     def __init__(self, datasetName, datasetPath, nodeNumber=None, ):
         self.rank = dist.get_rank()
@@ -71,6 +70,7 @@ class DevDataset(Dataset):
 
         for idx, data in enumerate(dataset):
             graph = self.__add_self_loop(data)
+            self.__add_norm(graph)
             
             if graph.is_homogeneous:
                 try:
@@ -95,6 +95,12 @@ class DevDataset(Dataset):
         if not has_self_loops:
             graph = dgl.add_self_loop(graph)
         return graph
+    
+    def __add_norm(self, graph):
+        in_degrees = graph.in_degrees().float()
+        norm = torch.pow(in_degrees, -0.5)
+        norm[torch.isinf(norm)] = 0
+        graph.ndata['norm'] = norm.unsqueeze(-1)
 
     def __prepare_feat_tag(self, graph):
         graph.ndata['feat'] = copy.deepcopy(graph.ndata['node_attr'])
@@ -114,6 +120,7 @@ class DevDataset(Dataset):
             global_node_ids = subgraph.ndata['_ID']
             subgraph.ndata['h'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
             subgraph.ndata['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
+            subgraph.ndata['norm'] = graph.ndata['norm'][global_node_ids].to(torch.float32)
             global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(global_node_ids)}
             global_to_local_maps[part_id] = global_to_local
             
