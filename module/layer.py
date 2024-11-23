@@ -46,10 +46,11 @@ class GNNBase(nn.Module):
             
 
 class GCNLayer(GNNBase):
-    def __init__(self, in_feats, out_feats, num_parts):
+    def __init__(self, in_feats, out_feats, num_parts, activation=None):
         super(GCNLayer, self).__init__()
         self.linear = nn.Linear(in_feats, out_feats)
         self.num_parts = num_parts
+        self.activation = activation
         
         init.constant_(self.linear.weight, 1)
         init.constant_(self.linear.bias, 1)
@@ -63,4 +64,6 @@ class GCNLayer(GNNBase):
                                  fn.sum(msg='m', out='h'))
         h = subgraph.nodes['_V'].data['h']
         h = self.linear(h)
+        if self.activation:
+            h = self.activation(h)
         return h
