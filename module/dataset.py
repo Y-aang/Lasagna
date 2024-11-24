@@ -22,7 +22,7 @@ class DevDataset(Dataset):
             dataset = YelpDataset(raw_dir=datasetPath)
         elif datasetName == 'proteins':
             dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath)
-            dataset = Subset(dataset, range(10))
+            dataset = Subset(dataset, range(2))
         self.length = 0
         self.savePath = "./dataset"
         os.makedirs(self.savePath, exist_ok=True)
