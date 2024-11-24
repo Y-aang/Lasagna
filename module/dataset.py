@@ -15,6 +15,7 @@ import pickle
 class DevDataset(Dataset):
     def __init__(self, datasetName, datasetPath, nodeNumber=None, ):
         self.rank = dist.get_rank()
+        self.part_size = 4
         if datasetName == 'reddit':
             dataset = RedditDataset(raw_dir=datasetPath)
         elif datasetName == 'yelp':
@@ -60,8 +61,23 @@ class DevDataset(Dataset):
         g_list_path = os.path.join(graph_save_path, f'g_list_{rank}.bin')
         g_structures, _ = dgl.load_graphs(g_list_path)
         g_structure = g_structures[0]
+        
+        send_map, recv_map = self.__convert_maps_to_gid(send_map, recv_map)
 
         return part, send_map, recv_map, g_structure
+
+    def __convert_maps_to_gid(self, send_map, recv_map):
+        offset = dist.get_rank() - dist.get_rank() % self.part_size
+        send_map = self.__partid_to_gid(send_map, offset)
+        recv_map = self.__partid_to_gid(recv_map, offset)
+        return send_map, recv_map
+        
+    def __partid_to_gid(self, map, offset):
+        result = {}
+        for partid, local_map in map.items():
+            gid = partid + offset
+            result[gid] = {k + offset: v for k, v in local_map.items()}
+        return result
 
     def __group_and_partition(self, dataset):
         print("process 0 processing data...")
@@ -109,7 +125,7 @@ class DevDataset(Dataset):
     def __process_graph(self, graph):     # one graph prepare process
         # split the graph in to 4 parts using metis_partition
         
-        num_parts = 4
+        num_parts = self.part_size
         num_nodes = graph.num_nodes()
         parts = metis_partition(graph, k=num_parts)
         global_to_local_maps = {}
@@ -238,7 +254,7 @@ class DevDataset(Dataset):
 
     
 def custom_collate_fn(batch):
-    assert len(batch) == 1
+    # assert len(batch) == 1
     return batch[0]
 
 

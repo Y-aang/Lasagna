@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.layer import GCNLayer
 from module.model import GCNProtein
 from module.dataset import DevDataset, custom_collate_fn
+from module.sampler import LasagnaSampler
 from helper.all_to_all import all_to_all
 from helper.utils import register_hook_for_model
 
@@ -41,7 +42,8 @@ def run(rank, size):
     criterion = nn.L1Loss(reduction='sum')
     optimizer = optim.SGD(gcn_module.parameters(), lr=0.001)
     train_dataset = DevDataset("proteins", datasetPath=None)
-    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=False, collate_fn=custom_collate_fn)
+    train_sampler = LasagnaSampler(train_dataset)
+    train_loader = DataLoader(train_dataset, batch_size=2, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
     for epoch in range(10):
         gcn_module.train()
