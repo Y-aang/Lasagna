@@ -86,23 +86,11 @@ class DevDataset(Dataset):
                 print(f"Graph {idx} is not homogeneous, skipping.")
 
     def __process_graph(self, graph):     # one graph prepare process
-        # split the graph in to k parts using metis_partition
-        
-        # step 1: graph partition 
-        num_nodes = graph.num_nodes()
+        # step 1: graph partition (split the graph in to k parts using metis_partition)
         parts = metis_partition(graph, k=self.part_size)
         
-        # step 2: prepare basic info (global_to_local_maps, node_part, part.ndata['h', 'tag', 'norm'])
-        global_to_local_maps = {}
-        node_part = torch.empty(num_nodes, dtype=torch.int64)       # partition id (pid) for each node
-        for part_id, part in parts.items():
-            global_node_ids = part.ndata['_ID']
-            part.ndata['h'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
-            part.ndata['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
-            part.ndata['norm'] = graph.ndata['norm'][global_node_ids].to(torch.float32)
-            global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(global_node_ids)}
-            global_to_local_maps[part_id] = global_to_local
-            node_part[part.ndata['_ID']] = part_id
+        # step 2: prepare basic info (node_part, global_to_local_maps, part.ndata['h', 'tag', 'norm'])
+        node_part, global_to_local_maps = self.__prepare_lasagna_data(graph, parts)
             
         # step 3: generate send/recv_map
         send_map, recv_map = self.__prepare_send_recv_maps(graph, node_part)
@@ -143,6 +131,19 @@ class DevDataset(Dataset):
             torch.save(send_map, os.path.join(graph_save_path, f'send_map_{i}.pt'))
             torch.save(recv_map, os.path.join(graph_save_path, f'recv_map_{i}.pt'))
             dgl.save_graphs(os.path.join(graph_save_path, f'g_list_{i}.bin'), [g_list[i]])
+        
+    def __prepare_lasagna_data(self, graph, parts):     # modify graph and parts, generate node_part and global_to_local_maps
+        node_part = torch.empty(graph.num_nodes(), dtype=torch.int64)       # partition id (pid) for each node
+        global_to_local_maps = {}
+        for part_id, part in parts.items():
+            global_node_ids = part.ndata['_ID']
+            part.ndata['h'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
+            part.ndata['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
+            part.ndata['norm'] = graph.ndata['norm'][global_node_ids].to(torch.float32)
+            global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(global_node_ids)}
+            global_to_local_maps[part_id] = global_to_local
+            node_part[part.ndata['_ID']] = part_id
+        return node_part, global_to_local_maps
         
     def __prepare_send_recv_maps(self, graph, node_part):
         send_map = {i: {} for i in range(self.part_size)}   #{0:{0:{3, 4}, 1:{8}}, 1:{...}, ...}
