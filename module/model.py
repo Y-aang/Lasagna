@@ -47,11 +47,11 @@ class GCNProtein(nn.Module):
         register_hook_for_model(self.gcnLayer6, dist.get_rank(), dist.get_world_size())
         
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat, norm, send_map, recv_map, rank, size):
-        logits = self.gcnLayer1.forward(subgraph, feat, norm, send_map, recv_map, rank, size)
+    def forward(self, subgraph, feat, norm, send_map, recv_map):
+        logits = self.gcnLayer1.forward(subgraph, feat, norm, send_map, recv_map)
         # logits = self.gcnLayer2.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
         # logits = self.gcnLayer3.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
         # logits = self.gcnLayer4.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
         # logits = self.gcnLayer5.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
-        logits = self.gcnLayer6.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
+        logits = self.gcnLayer6.forward(subgraph, logits, norm, send_map, recv_map)
         return logits

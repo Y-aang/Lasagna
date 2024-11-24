@@ -10,22 +10,24 @@ class GNNBase(nn.Module):
     def __init__(self):
         super(GNNBase, self).__init__()
     
-    def distributed_comm(self, subgraph, feat, send_map, recv_map, rank, size):
+    def distributed_comm(self, subgraph, feat, send_map, recv_map):
         dist.barrier()
         # feat.register_hook(communicate_grad)
-        send_list, recv_list = self.__prepare_comm_data(feat, send_map, recv_map, rank, size)
+        send_list, recv_list = self.__prepare_comm_data(feat, send_map, recv_map)
         
         dist.barrier()
         all_to_all(recv_list, send_list)
-        feat = self.__process_recv_data(subgraph, feat, recv_map, recv_list, rank)
+        feat = self.__process_recv_data(subgraph, feat, recv_map, recv_list)
         
         if feat.requires_grad:
-            feat.register_hook(feat_hook(send_map, recv_map, rank, size))
+            feat.register_hook(feat_hook(send_map, recv_map))
         
         dist.barrier()
         return feat
     
-    def __prepare_comm_data(self, feat, send_map, recv_map, rank, size):
+    def __prepare_comm_data(self, feat, send_map, recv_map):
+        rank = dist.get_rank()
+        size = dist.get_world_size() 
         send_list = [torch.tensor([0.0])] * size
         for part_v in send_map[rank]:
             send_feat = feat[send_map[rank][part_v]].clone()
@@ -36,7 +38,8 @@ class GNNBase(nn.Module):
             recv_list[part_v] = recv_feat
         return send_list, recv_list
     
-    def __process_recv_data(self, subgraph, feat, recv_map, recv_list, rank):
+    def __process_recv_data(self, subgraph, feat, recv_map, recv_list):
+        rank = dist.get_rank()
         feat_expand = torch.empty(subgraph.num_nodes('_U') - feat.shape[0], feat.shape[1])
         feat = torch.cat((feat, feat_expand), dim=0)
         for part_v in recv_map[rank]:
@@ -56,9 +59,9 @@ class GCNLayer(GNNBase):
         init.constant_(self.linear.bias, 1)
     
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat, norm, send_map, recv_map, rank, size):
+    def forward(self, subgraph, feat, norm, send_map, recv_map):
         feat = feat * norm
-        feat = super().distributed_comm(subgraph, feat, send_map, recv_map, rank, size)
+        feat = super().distributed_comm(subgraph, feat, send_map, recv_map)
         subgraph.nodes['_U'].data['h'] = feat
         subgraph.update_all(fn.copy_u(u='h', out='m'),
                                  fn.sum(msg='m', out='h'))

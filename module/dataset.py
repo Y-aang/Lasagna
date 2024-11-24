@@ -61,7 +61,6 @@ class DevDataset(Dataset):
         g_structure = g_structures[0]
         
         send_map, recv_map = self.__convert_maps_to_gid(send_map, recv_map)
-
         return part, send_map, recv_map, g_structure
 
     def __process_graphs(self, dataset):

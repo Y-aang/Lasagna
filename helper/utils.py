@@ -18,8 +18,10 @@ def register_hook_for_model(model, rank, size):
         if param.requires_grad:
             param.register_hook(parameter_hook(rank, size))
             
-def feat_hook(send_map, recv_map, rank, size):
+def feat_hook(send_map, recv_map):
     def communicate_grad(grad):
+        rank = dist.get_rank()
+        size = dist.get_world_size() 
         send_list = [torch.tensor([0.0])] * size
         recv_list = [torch.tensor([0.0])] * size
         for src, feat_idx in recv_map[rank].items():
