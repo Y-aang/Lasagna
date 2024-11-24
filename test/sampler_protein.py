@@ -26,23 +26,15 @@ def init_process(rank, size, fn, backend='gloo'):
     os.environ['MASTER_PORT'] = '29515'
     dist.init_process_group(backend, rank=rank, world_size=size, init_method='env://', timeout=timedelta(minutes=1.5))
     fn(rank, size)
-# from buffer import LocalFeatureStore
-# feature_store = LocalFeatureStore()
-# 第4步：定义跨多分区消息传递的 GCN 层
 
-# 第5步：运行带有跨分区消息传递的GCN
 def run(rank, size):
     print(f"Rank {rank}: 进入run函数")
-    # processing data
-    # for data(graph structure & graph feature) in dataset:
-    
-    # TODO: gain data from path
     # gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
-    num_part = 4
-    gcn_module = GCNProtein(in_feats=1, out_feats=1, num_parts=num_part)
+    part_size = 4
+    gcn_module = GCNProtein(in_feats=1, out_feats=1, part_size=part_size)
     criterion = nn.L1Loss(reduction='sum')
     optimizer = optim.SGD(gcn_module.parameters(), lr=0.1)
-    train_dataset = DevDataset("proteins", datasetPath=None, num_part=num_part)
+    train_dataset = DevDataset("proteins", datasetPath=None, part_size=part_size)
     train_sampler = LasagnaSampler(train_dataset)
     train_loader = DataLoader(train_dataset, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
@@ -69,16 +61,13 @@ def run(rank, size):
 
 if __name__ == "__main__":
     torch.set_default_dtype(torch.float32)
-
-    size = 8  # 使用4个进程 (每个GPU一个子图)
+    size = 8
     torch.multiprocessing.set_start_method('spawn')
     processes = []
-
     for rank in range(size):
         p = torch.multiprocessing.Process(target=init_process, args=(rank, size, run))
         p.start()
         processes.append(p)
-
     for p in processes:
         p.join()
 
