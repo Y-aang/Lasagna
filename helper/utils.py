@@ -2,10 +2,12 @@ import torch
 import torch.distributed as dist
 from helper.all_to_all import all_to_all
 
-def parameter_hook(rank, size):
+def parameter_hook():
     def communicate_grad(grad):
-        send_list = [grad.clone() for _ in range(dist.get_world_size())]
-        recv_list = [torch.zeros_like(grad) for _ in range(dist.get_world_size())]
+        rank = dist.get_rank()
+        size = dist.get_world_size() 
+        send_list = [grad.clone() for _ in range(size)]
+        recv_list = [torch.zeros_like(grad) for _ in range(size)]
         all_to_all(recv_list, send_list)
         
         recv_list[rank] = grad
@@ -13,10 +15,10 @@ def parameter_hook(rank, size):
         return grad_sum
     return communicate_grad
 
-def register_hook_for_model(model, rank, size):
+def register_hook_for_model(model):
     for param in model.parameters():
         if param.requires_grad:
-            param.register_hook(parameter_hook(rank, size))
+            param.register_hook(parameter_hook())
             
 def feat_hook(send_map, recv_map):
     def communicate_grad(grad):

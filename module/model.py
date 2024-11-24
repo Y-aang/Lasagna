@@ -39,12 +39,12 @@ class GCNProtein(nn.Module):
         self.gcnLayer6 = GCNLayer(in_feats=3, out_feats=1, part_size=part_size, activation=F.relu)
 
         
-        register_hook_for_model(self.gcnLayer1, dist.get_rank(), dist.get_world_size())
+        register_hook_for_model(self.gcnLayer1)
         # register_hook_for_model(self.gcnLayer2, dist.get_rank(), dist.get_world_size())
         # register_hook_for_model(self.gcnLayer3, dist.get_rank(), dist.get_world_size())
         # register_hook_for_model(self.gcnLayer4, dist.get_rank(), dist.get_world_size())
         # register_hook_for_model(self.gcnLayer5, dist.get_rank(), dist.get_world_size())
-        register_hook_for_model(self.gcnLayer6, dist.get_rank(), dist.get_world_size())
+        register_hook_for_model(self.gcnLayer6)
         
     # def forward(self, graphStructure, subgraphFeature):
     def forward(self, subgraph, feat, norm, send_map, recv_map):
