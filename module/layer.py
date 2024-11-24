@@ -4,7 +4,7 @@ import torch.distributed as dist
 import torch.nn.init as init
 import dgl.function as fn
 from helper.all_to_all import all_to_all
-from helper.utils import feat_hook
+from helper.utils import feat_hook, register_hook_for_model_param
 
 class GNNBase(nn.Module):
     def __init__(self):
@@ -57,6 +57,8 @@ class GCNLayer(GNNBase):
         
         init.constant_(self.linear.weight, 1)
         init.constant_(self.linear.bias, 1)
+        
+        register_hook_for_model_param(self.parameters())
     
     # def forward(self, graphStructure, subgraphFeature):
     def forward(self, subgraph, feat, norm, send_map, recv_map):

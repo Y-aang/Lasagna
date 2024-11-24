@@ -15,8 +15,8 @@ def parameter_hook():
         return grad_sum
     return communicate_grad
 
-def register_hook_for_model(model):
-    for param in model.parameters():
+def register_hook_for_model_param(params):
+    for param in params:
         if param.requires_grad:
             param.register_hook(parameter_hook())
             

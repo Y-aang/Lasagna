@@ -18,7 +18,6 @@ from module.model import GCNProtein
 from module.dataset import DevDataset, custom_collate_fn
 from module.sampler import LasagnaSampler
 from helper.all_to_all import all_to_all
-from helper.utils import register_hook_for_model
 
 # 初始化分布式环境
 def init_process(rank, size, fn, backend='gloo'):
