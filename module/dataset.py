@@ -13,13 +13,11 @@ import pickle
 
 
 class DevDataset(Dataset):
-    def __init__(self, datasetName, datasetPath, num_part, nodeNumber=None, ):
+    def __init__(self, datasetName, datasetPath, part_size, nodeNumber=None, ):
         self.rank = dist.get_rank()
-        self.part_size = num_part
+        self.part_size = part_size
         if datasetName == 'reddit':
             dataset = RedditDataset(raw_dir=datasetPath)
-        elif datasetName == 'yelp':
-            dataset = YelpDataset(raw_dir=datasetPath)
         elif datasetName == 'proteins':
             dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath)
             dataset = Subset(dataset, range(2))
@@ -27,18 +25,18 @@ class DevDataset(Dataset):
         self.savePath = "./dataset"
         os.makedirs(self.savePath, exist_ok=True)
             
-        meta_path = os.path.join(self.savePath, f'meta_data.pkl')
+        _meta_path = os.path.join(self.savePath, f'meta_data.pkl')
         if self.rank == 0:
-            self.__group_and_partition(dataset)
+            self.__process_graphs(dataset)
             
-            os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-            with open(meta_path, 'wb') as f:
+            os.makedirs(os.path.dirname(_meta_path), exist_ok=True)
+            with open(_meta_path, 'wb') as f:
                 pickle.dump(self.length, f)
         else:
             print(dist.get_rank(), 'waiting...')
         dist.barrier()
         
-        with open(meta_path, 'rb') as f:
+        with open(_meta_path, 'rb') as f:
             self.length = pickle.load(f)
         print(dist.get_rank(), 'dataset processing finished...')
         
@@ -66,27 +64,14 @@ class DevDataset(Dataset):
 
         return part, send_map, recv_map, g_structure
 
-    def __convert_maps_to_gid(self, send_map, recv_map):
-        offset = dist.get_rank() - dist.get_rank() % self.part_size
-        send_map = self.__partid_to_gid(send_map, offset)
-        recv_map = self.__partid_to_gid(recv_map, offset)
-        return send_map, recv_map
-        
-    def __partid_to_gid(self, map, offset):
-        result = {}
-        for partid, local_map in map.items():
-            gid = partid + offset
-            result[gid] = {k + offset: v for k, v in local_map.items()}
-        return result
-
-    def __group_and_partition(self, dataset):
+    def __process_graphs(self, dataset):
         print("process 0 processing data...")
         for idx, data in enumerate(dataset):
-            graph = self.__add_self_loop(data)
-            self.__add_norm(graph)
-            
+            graph = data[0]
             if graph.is_homogeneous:
                 try:
+                    graph = self.__add_self_loop(graph)
+                    self.__add_norm(graph)
                     self.__prepare_feat_tag(graph)
                     parts, g_list, send_map, recv_map= self.__process_graph(graph)
                     
@@ -100,8 +85,41 @@ class DevDataset(Dataset):
             else:
                 print(f"Graph {idx} is not homogeneous, skipping.")
 
-    def __add_self_loop(self, data):
-        graph = data[0]
+    def __process_graph(self, graph):     # one graph prepare process
+        # split the graph in to k parts using metis_partition
+        
+        # step 1: graph partition 
+        num_nodes = graph.num_nodes()
+        parts = metis_partition(graph, k=self.part_size)
+        
+        # step 2: prepare basic info (global_to_local_maps, node_part, part.ndata['h', 'tag', 'norm'])
+        global_to_local_maps = {}
+        node_part = torch.empty(num_nodes, dtype=torch.int64)       # partition id (pid) for each node
+        for part_id, part in parts.items():
+            global_node_ids = part.ndata['_ID']
+            part.ndata['h'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
+            part.ndata['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
+            part.ndata['norm'] = graph.ndata['norm'][global_node_ids].to(torch.float32)
+            global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(global_node_ids)}
+            global_to_local_maps[part_id] = global_to_local
+            node_part[part.ndata['_ID']] = part_id
+            
+        # step 3: generate send/recv_map
+        send_map, recv_map = self.__prepare_send_recv_maps(graph, node_part)
+        
+        # step 4: update global_to_local_maps (add bounding nodes)
+        global_to_local_maps = self.__update_global_to_local_maps(global_to_local_maps, recv_map)
+
+        # step 5: convert send/recv_map to local
+        local_send_map = self.__convert_map_to_local(send_map, global_to_local_maps)
+        local_recv_map = self.__convert_map_to_local(recv_map, global_to_local_maps)
+
+        # step 6: construct bipartite graph
+        g_list = self.__construct_graph(graph, parts, send_map, recv_map, global_to_local_maps, node_part)
+        
+        return parts, g_list, local_send_map, local_recv_map
+        
+    def __add_self_loop(self, graph):
         src, dst = graph.edges()
         src, dst = graph.edges()
         has_self_loops = (src == dst).all()
@@ -118,68 +136,6 @@ class DevDataset(Dataset):
     def __prepare_feat_tag(self, graph):
         graph.ndata['feat'] = copy.deepcopy(graph.ndata['node_attr'])
         graph.ndata['tag'] = copy.deepcopy(graph.ndata['node_labels'])
-    
-    def __process_graph(self, graph):     # one graph prepare process
-        # split the graph in to 4 parts using metis_partition
-        
-        num_parts = self.part_size
-        num_nodes = graph.num_nodes()
-        parts = metis_partition(graph, k=num_parts)
-        global_to_local_maps = {}
-        # get partition number for each node through part_id
-        node_part = torch.empty(num_nodes, dtype=torch.int64)
-        # process distribution feature, node ranking and global_to_local_maps
-        for part_id, subgraph in parts.items():
-            global_node_ids = subgraph.ndata['_ID']
-            subgraph.ndata['h'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
-            subgraph.ndata['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
-            subgraph.ndata['norm'] = graph.ndata['norm'][global_node_ids].to(torch.float32)
-            global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(global_node_ids)}
-            global_to_local_maps[part_id] = global_to_local
-            
-        for part_id, subgraph in parts.items():
-            node_part[subgraph.ndata['_ID']] = part_id  # 将子图的节点编号映射到原始图的节点
-
-        # 第3步：记录每个子图的send和recv信息
-        send_map = {i: {} for i in range(num_parts)}  # 记录每个子图要发送的目标子图
-        recv_map = {i: {} for i in range(num_parts)}  # 记录每个子图要接收的源子图
-        
-        # 获取需要跨分区传递的边 (跨分区的节点)
-        for u, v in zip(graph.edges()[0], graph.edges()[1]):
-            part_u = node_part[u].item()  # u的分区
-            part_v = node_part[v].item()  # v的分区
-            if part_u != part_v:
-                # u 需要发送特征给 v 的子图
-                if part_v not in send_map[part_u]:
-                    send_map[part_u][part_v] = []
-                if u.item() not in send_map[part_u][part_v]:
-                    send_map[part_u][part_v].append(u.item())
-                # v 需要从 u 的子图接收特征
-                if part_u not in recv_map[part_v]:
-                    recv_map[part_v][part_u] = []
-                if u.item() not in recv_map[part_v][part_u]:
-                    recv_map[part_v][part_u].append(u.item())
-
-        # 将send_map和recv_map转换为张量列表，方便后续处理
-        for part in send_map:
-            for target_part in send_map[part]:
-                send_map[part][target_part] = torch.tensor(send_map[part][target_part])
-
-        for part in recv_map:
-            for source_part in recv_map[part]:
-                recv_map[part][source_part] = torch.tensor(recv_map[part][source_part])
-
-        # 更新global_to_local_maps
-        global_to_local_maps = self.__update_global_to_local_maps(global_to_local_maps, recv_map)
-
-        # 获取local的recv和send map用于作为dataset的处理后输出
-        local_send_map = self.__convert_map_to_local(send_map, global_to_local_maps)
-        local_recv_map = self.__convert_map_to_local(recv_map, global_to_local_maps)
-
-        g_list = self.__construct_graph(graph, parts, send_map, recv_map, global_to_local_maps, node_part)
-        
-        return parts, g_list, local_send_map, local_recv_map
-        
         
     def __save_graph(self, parts, g_list, send_map, recv_map, graph_save_path, k):
         for i in range(k):
@@ -187,6 +143,32 @@ class DevDataset(Dataset):
             torch.save(send_map, os.path.join(graph_save_path, f'send_map_{i}.pt'))
             torch.save(recv_map, os.path.join(graph_save_path, f'recv_map_{i}.pt'))
             dgl.save_graphs(os.path.join(graph_save_path, f'g_list_{i}.bin'), [g_list[i]])
+        
+    def __prepare_send_recv_maps(self, graph, node_part):
+        send_map = {i: {} for i in range(self.part_size)}   #{0:{0:{3, 4}, 1:{8}}, 1:{...}, ...}
+        recv_map = {i: {} for i in range(self.part_size)}
+        for u, v in zip(graph.edges()[0], graph.edges()[1]):    # edges between partitions
+            part_u = node_part[u].item()
+            part_v = node_part[v].item()
+            if part_u != part_v:
+                # send_map: u -> v
+                if part_v not in send_map[part_u]:
+                    send_map[part_u][part_v] = []
+                if u.item() not in send_map[part_u][part_v]:
+                    send_map[part_u][part_v].append(u.item())
+                # recv_map: v -> u
+                if part_u not in recv_map[part_v]:
+                    recv_map[part_v][part_u] = []
+                if u.item() not in recv_map[part_v][part_u]:
+                    recv_map[part_v][part_u].append(u.item())
+        # transfer maps to tensor
+        for part in send_map:
+            for target_part in send_map[part]:
+                send_map[part][target_part] = torch.tensor(send_map[part][target_part])
+        for part in recv_map:
+            for source_part in recv_map[part]:
+                recv_map[part][source_part] = torch.tensor(recv_map[part][source_part])
+        return send_map, recv_map
         
     def __update_global_to_local_maps(self, global_to_local_maps, recv_map):
         for rank, sub_map in recv_map.items():
@@ -210,17 +192,14 @@ class DevDataset(Dataset):
                     next_index += 1
         return global_to_local_maps
 
-    def __convert_map_to_local(self, recv_map, global_to_local_maps):
-        # Create a deep copy of recv_map to avoid modifying the original one
-        local_recv_map = copy.deepcopy(recv_map)
-        
-        for rank, sub_map in local_recv_map.items():
+    def __convert_map_to_local(self, global_map, global_to_local_maps):
+        local_map = copy.deepcopy(global_map)
+        for rank, sub_map in local_map.items():
             # Iterate over the target ranks and node lists in the current rank's sub-map
-            for target_rank, nodes in sub_map.items():
+            for target_rank, nodes in sub_map.items():      
                 # Update the nodes using global_to_local_maps
-                local_recv_map[rank][target_rank] = [global_to_local_maps[rank].get(node.item()) for node in nodes]
-
-        return local_recv_map
+                local_map[rank][target_rank] = [global_to_local_maps[rank].get(node.item()) for node in nodes]
+        return local_map
 
     def __construct_graph(self, graph, parts, send_map, recv_map, global_to_local_maps, node_part):
         u_subs, v_subs = [], []
@@ -248,6 +227,19 @@ class DevDataset(Dataset):
             g_list.append(g)
         
         return g_list
+
+    def __convert_maps_to_gid(self, send_map, recv_map):
+        offset = dist.get_rank() - dist.get_rank() % self.part_size
+        send_map = self.__partid_to_gid(send_map, offset)
+        recv_map = self.__partid_to_gid(recv_map, offset)
+        return send_map, recv_map
+        
+    def __partid_to_gid(self, map, offset):
+        result = {}
+        for partid, local_map in map.items():
+            gid = partid + offset
+            result[gid] = {k + offset: v for k, v in local_map.items()}
+        return result
 
     
 def custom_collate_fn(batch):

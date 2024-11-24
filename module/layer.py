@@ -46,10 +46,10 @@ class GNNBase(nn.Module):
             
 
 class GCNLayer(GNNBase):
-    def __init__(self, in_feats, out_feats, num_parts, activation=None):
+    def __init__(self, in_feats, out_feats, part_size, activation=None):
         super(GCNLayer, self).__init__()
         self.linear = nn.Linear(in_feats, out_feats)
-        self.num_parts = num_parts
+        self.part_size = part_size
         self.activation = activation
         
         init.constant_(self.linear.weight, 1)

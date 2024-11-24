@@ -29,14 +29,14 @@ class GCNDataset(nn.Module):
         return logits
     
 class GCNProtein(nn.Module):
-    def __init__(self, in_feats, out_feats, num_parts):
+    def __init__(self, in_feats, out_feats, part_size):
         super(GCNProtein, self).__init__()
-        self.gcnLayer1 = GCNLayer(in_feats=1, out_feats=3, num_parts=num_parts, activation=F.relu)
+        self.gcnLayer1 = GCNLayer(in_feats=1, out_feats=3, part_size=part_size, activation=F.relu)
         # self.gcnLayer2 = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts, activation=F.relu)
         # self.gcnLayer3 = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts, activation=F.relu)
         # self.gcnLayer4 = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts, activation=F.relu)
         # self.gcnLayer5 = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts, activation=F.relu)
-        self.gcnLayer6 = GCNLayer(in_feats=3, out_feats=1, num_parts=num_parts, activation=F.relu)
+        self.gcnLayer6 = GCNLayer(in_feats=3, out_feats=1, part_size=part_size, activation=F.relu)
 
         
         register_hook_for_model(self.gcnLayer1, dist.get_rank(), dist.get_world_size())
