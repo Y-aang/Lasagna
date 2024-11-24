@@ -38,12 +38,13 @@ def run(rank, size):
     
     # TODO: gain data from path
     # gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
-    gcn_module = GCNProtein(in_feats=1, out_feats=1, num_parts=4)
+    num_part = 4
+    gcn_module = GCNProtein(in_feats=1, out_feats=1, num_parts=num_part)
     criterion = nn.L1Loss(reduction='sum')
     optimizer = optim.SGD(gcn_module.parameters(), lr=0.001)
-    train_dataset = DevDataset("proteins", datasetPath=None)
+    train_dataset = DevDataset("proteins", datasetPath=None, num_part=num_part)
     train_sampler = LasagnaSampler(train_dataset)
-    train_loader = DataLoader(train_dataset, batch_size=2, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
+    train_loader = DataLoader(train_dataset, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
     for epoch in range(10):
         gcn_module.train()

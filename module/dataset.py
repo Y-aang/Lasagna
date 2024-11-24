@@ -13,9 +13,9 @@ import pickle
 
 
 class DevDataset(Dataset):
-    def __init__(self, datasetName, datasetPath, nodeNumber=None, ):
+    def __init__(self, datasetName, datasetPath, num_part, nodeNumber=None, ):
         self.rank = dist.get_rank()
-        self.part_size = 4
+        self.part_size = num_part
         if datasetName == 'reddit':
             dataset = RedditDataset(raw_dir=datasetPath)
         elif datasetName == 'yelp':
@@ -46,19 +46,19 @@ class DevDataset(Dataset):
         return self.length
     
     def __getitem__(self, index):
-        rank = dist.get_rank()
+        pid = dist.get_rank() % self.part_size
         graph_save_path = os.path.join(self.savePath, f'graph_{index}')
         
-        part_path = os.path.join(graph_save_path, f'part_{rank}.bin')
+        part_path = os.path.join(graph_save_path, f'part_{pid}.bin')
         parts, _ = dgl.load_graphs(part_path)
         part = parts[0]
         
-        send_map_path = os.path.join(graph_save_path, f'send_map_{rank}.pt')
-        recv_map_path = os.path.join(graph_save_path, f'recv_map_{rank}.pt')
+        send_map_path = os.path.join(graph_save_path, f'send_map_{pid}.pt')
+        recv_map_path = os.path.join(graph_save_path, f'recv_map_{pid}.pt')
         send_map = torch.load(send_map_path)
         recv_map = torch.load(recv_map_path)
 
-        g_list_path = os.path.join(graph_save_path, f'g_list_{rank}.bin')
+        g_list_path = os.path.join(graph_save_path, f'g_list_{pid}.bin')
         g_structures, _ = dgl.load_graphs(g_list_path)
         g_structure = g_structures[0]
         
@@ -81,9 +81,6 @@ class DevDataset(Dataset):
 
     def __group_and_partition(self, dataset):
         print("process 0 processing data...")
-
-        k = 4
-
         for idx, data in enumerate(dataset):
             graph = self.__add_self_loop(data)
             self.__add_norm(graph)
@@ -95,7 +92,7 @@ class DevDataset(Dataset):
                     
                     graph_save_path = os.path.join(self.savePath, f'graph_{idx}')
                     os.makedirs(graph_save_path, exist_ok=True)
-                    self.__save_graph(parts, g_list, send_map, recv_map, graph_save_path, k=4)
+                    self.__save_graph(parts, g_list, send_map, recv_map, graph_save_path, k=self.part_size)
                     self.length += 1
                     print(f"Partitioning successed for graph_{idx}")
                 except Exception as e:
@@ -184,7 +181,7 @@ class DevDataset(Dataset):
         return parts, g_list, local_send_map, local_recv_map
         
         
-    def __save_graph(self, parts, g_list, send_map, recv_map, graph_save_path, k=4):
+    def __save_graph(self, parts, g_list, send_map, recv_map, graph_save_path, k):
         for i in range(k):
             dgl.save_graphs(os.path.join(graph_save_path, f'part_{i}.bin'), [parts[i]])
             torch.save(send_map, os.path.join(graph_save_path, f'send_map_{i}.pt'))
@@ -254,7 +251,7 @@ class DevDataset(Dataset):
 
     
 def custom_collate_fn(batch):
-    # assert len(batch) == 1
+    assert len(batch) == 1
     return batch[0]
 
 
