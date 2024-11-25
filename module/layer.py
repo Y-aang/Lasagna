@@ -10,9 +10,11 @@ class GNNBase(nn.Module):
     def __init__(self):
         super(GNNBase, self).__init__()
     
-    def distributed_comm(self, subgraph, feat, send_map, recv_map):
+    def distributed_comm(self, subgraph, feat):
         dist.barrier()
         # feat.register_hook(communicate_grad)
+        send_map = subgraph.lasagna_data['send_map']
+        recv_map = subgraph.lasagna_data['recv_map']
         send_list, recv_list = self.__prepare_comm_data(feat, send_map, recv_map)
         
         dist.barrier()
@@ -61,9 +63,9 @@ class GCNLayer(GNNBase):
         register_hook_for_model_param(self.parameters())
     
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat, norm, send_map, recv_map):
+    def forward(self, subgraph, feat, norm):
         feat = feat * norm
-        feat = super().distributed_comm(subgraph, feat, send_map, recv_map)
+        feat = super().distributed_comm(subgraph, feat)
         subgraph.nodes['_U'].data['h'] = feat
         subgraph.update_all(fn.copy_u(u='h', out='m'),
                                  fn.sum(msg='m', out='h'))

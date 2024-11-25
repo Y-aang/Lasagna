@@ -50,18 +50,18 @@ class DevDataset(Dataset):
         part_path = os.path.join(graph_save_path, f'part_{pid}.bin')
         parts, _ = dgl.load_graphs(part_path)
         part = parts[0]
-        
-        send_map_path = os.path.join(graph_save_path, f'send_map_{pid}.pt')
-        recv_map_path = os.path.join(graph_save_path, f'recv_map_{pid}.pt')
-        send_map = torch.load(send_map_path)
-        recv_map = torch.load(recv_map_path)
 
         g_list_path = os.path.join(graph_save_path, f'g_list_{pid}.bin')
-        g_structures, _ = dgl.load_graphs(g_list_path)
-        g_structure = g_structures[0]
+        with open(g_list_path, 'rb') as f:
+            g_structure = pickle.load(f)
         
-        send_map, recv_map = self.__convert_maps_to_gid(send_map, recv_map)
-        return part, send_map, recv_map, g_structure
+        # transfer send/recv_map's partid into gid
+        g_structure.lasagna_data['send_map'], g_structure.lasagna_data['recv_map'] = self.__convert_maps_to_gid(
+            g_structure.lasagna_data['send_map'],
+            g_structure.lasagna_data['recv_map']
+        )
+        
+        return part, g_structure
 
     def __process_graphs(self, dataset):
         print("process 0 processing data...")
@@ -72,11 +72,11 @@ class DevDataset(Dataset):
                     graph = self.__add_self_loop(graph)
                     self.__add_norm(graph)
                     self.__prepare_feat_tag(graph)
-                    parts, g_list, send_map, recv_map= self.__process_graph(graph)
+                    parts, g_list = self.__process_graph(graph)
                     
                     graph_save_path = os.path.join(self.savePath, f'graph_{idx}')
                     os.makedirs(graph_save_path, exist_ok=True)
-                    self.__save_graph(parts, g_list, send_map, recv_map, graph_save_path, k=self.part_size)
+                    self.__save_graph(parts, g_list, graph_save_path, k=self.part_size)
                     self.length += 1
                     print(f"Partitioning successed for graph_{idx}")
                 except Exception as e:
@@ -88,9 +88,9 @@ class DevDataset(Dataset):
         # step 1: graph partition (split the graph in to k parts using metis_partition)
         parts = metis_partition(graph, k=self.part_size)
         
-        # step 2: prepare basic info (node_part, global_to_local_maps, part.ndata['h', 'tag', 'norm'])
-        node_part, global_to_local_maps = self.__prepare_lasagna_data(graph, parts)
-            
+        # step 2: prepare basic info into subgraph (node_part, global_to_local_maps, part.ndata['h', 'tag', 'norm'])
+        node_part, global_to_local_maps = self.__assign_subgraph_data(graph, parts)
+
         # step 3: generate send/recv_map
         send_map, recv_map = self.__prepare_send_recv_maps(graph, node_part)
         
@@ -104,7 +104,10 @@ class DevDataset(Dataset):
         # step 6: construct bipartite graph
         g_list = self.__construct_graph(graph, parts, send_map, recv_map, global_to_local_maps, node_part)
         
-        return parts, g_list, local_send_map, local_recv_map
+        # step 7: setattr to graph.lasagna_data
+        self.__construct_lasagna_data(g_list, parts, local_send_map, local_recv_map)
+        
+        return parts, g_list
         
     def __add_self_loop(self, graph):
         src, dst = graph.edges()
@@ -124,14 +127,13 @@ class DevDataset(Dataset):
         graph.ndata['feat'] = copy.deepcopy(graph.ndata['node_attr'])
         graph.ndata['tag'] = copy.deepcopy(graph.ndata['node_labels'])
         
-    def __save_graph(self, parts, g_list, send_map, recv_map, graph_save_path, k):
+    def __save_graph(self, parts, g_list, graph_save_path, k):
         for i in range(k):
             dgl.save_graphs(os.path.join(graph_save_path, f'part_{i}.bin'), [parts[i]])
-            torch.save(send_map, os.path.join(graph_save_path, f'send_map_{i}.pt'))
-            torch.save(recv_map, os.path.join(graph_save_path, f'recv_map_{i}.pt'))
-            dgl.save_graphs(os.path.join(graph_save_path, f'g_list_{i}.bin'), [g_list[i]])
+            with open(os.path.join(graph_save_path, f'g_list_{i}.bin'), 'wb') as f:
+                pickle.dump(g_list[i], f)
         
-    def __prepare_lasagna_data(self, graph, parts):     # modify graph and parts, generate node_part and global_to_local_maps
+    def __assign_subgraph_data(self, graph, parts):     # modify graph and parts, generate node_part and global_to_local_maps
         node_part = torch.empty(graph.num_nodes(), dtype=torch.int64)       # partition id (pid) for each node
         global_to_local_maps = {}
         for part_id, part in parts.items():
@@ -227,6 +229,13 @@ class DevDataset(Dataset):
             g_list.append(g)
         
         return g_list
+
+    def __construct_lasagna_data(self, g_list, parts, send_map, recv_map):
+        for idx, graph in enumerate(g_list):
+            setattr(graph, 'lasagna_data', {})
+            graph.lasagna_data['send_map'] = send_map
+            graph.lasagna_data['recv_map'] = recv_map
+            graph.lasagna_data['norm'] = parts[idx].ndata['norm']
 
     def __convert_maps_to_gid(self, send_map, recv_map):
         offset = dist.get_rank() - dist.get_rank() % self.part_size

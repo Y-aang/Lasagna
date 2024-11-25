@@ -31,19 +31,11 @@ class GCNProtein(nn.Module):
     def __init__(self, in_feats, out_feats, part_size):
         super(GCNProtein, self).__init__()
         self.gcnLayer1 = GCNLayer(in_feats=1, out_feats=3, part_size=part_size, activation=F.relu)
-        # self.gcnLayer2 = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts, activation=F.relu)
-        # self.gcnLayer3 = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts, activation=F.relu)
-        # self.gcnLayer4 = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts, activation=F.relu)
-        # self.gcnLayer5 = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts, activation=F.relu)
-        self.gcnLayer6 = GCNLayer(in_feats=3, out_feats=1, part_size=part_size, activation=F.relu)
+        self.gcnLayer2 = GCNLayer(in_feats=3, out_feats=1, part_size=part_size, activation=F.relu)
 
         
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat, norm, send_map, recv_map):
-        logits = self.gcnLayer1.forward(subgraph, feat, norm, send_map, recv_map)
-        # logits = self.gcnLayer2.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
-        # logits = self.gcnLayer3.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
-        # logits = self.gcnLayer4.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
-        # logits = self.gcnLayer5.forward(subgraph, logits, norm, send_map, recv_map, rank, size)
-        logits = self.gcnLayer6.forward(subgraph, logits, norm, send_map, recv_map)
+    def forward(self, subgraph, feat, norm):
+        logits = self.gcnLayer1.forward(subgraph, feat, norm)
+        logits = self.gcnLayer2.forward(subgraph, logits, norm)
         return logits

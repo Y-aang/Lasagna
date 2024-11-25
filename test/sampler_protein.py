@@ -40,9 +40,9 @@ def run(rank, size):
     for epoch in range(1):
         gcn_module.train()
         total_loss = 0
-        for part, send_map, recv_map, g_structure in train_loader:
+        for part, g_structure in train_loader:
             part.ndata['h'].requires_grad_(True)
-            output = gcn_module.forward(g_structure, part.ndata['h'], part.ndata['norm'], send_map, recv_map)
+            output = gcn_module.forward(g_structure, part.ndata['h'], part.ndata['norm'])
             print("Rank", rank, '\n',
                 "节点的全局序号:", part.ndata['_ID'].tolist(), '\n',
                 "输出特征：", output, '\n',
@@ -52,7 +52,7 @@ def run(rank, size):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print(f"Rank {rank} 训练后的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias} {gcn_module.gcnLayer6.linear.weight} {gcn_module.gcnLayer6.linear.bias}")
+            print(f"Rank {rank} 训练后的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias} {gcn_module.gcnLayer2.linear.weight} {gcn_module.gcnLayer2.linear.bias}")
             # print(f"Rank {rank} 训练后feat的梯度： {part.ndata['h'].grad}")
             total_loss += loss.item()
         print(f'Rank {rank} Epoch {epoch + 1}, Loss: {total_loss:.4f}')
