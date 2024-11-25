@@ -51,7 +51,7 @@ class GNNBase(nn.Module):
             
 
 class GCNLayer(GNNBase):
-    def __init__(self, in_feats, out_feats, part_size, activation=None):
+    def __init__(self, in_feats, out_feats, part_size, activation=None):    # TODO: part_size is not expected seemly
         super(GCNLayer, self).__init__()
         self.linear = nn.Linear(in_feats, out_feats)
         self.part_size = part_size
