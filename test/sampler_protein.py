@@ -40,20 +40,20 @@ def run(rank, size):
     for epoch in range(1):
         gcn_module.train()
         total_loss = 0
-        for part, g_structure in train_loader:
-            part.ndata['h'].requires_grad_(True)
-            output = gcn_module.forward(g_structure, part.ndata['h'])
+        for g_structure, feat, tag in train_loader:
+            feat.requires_grad_(True)
+            output = gcn_module.forward(g_structure, feat)
             print("Rank", rank, '\n',
                 "节点的全局序号:", g_structure.lasagna_data['_ID'].tolist(), '\n',
                 "输出特征：", output, '\n',
-                "节点 target:", part.ndata['tag'],
+                "节点 target:", tag,
             )
-            loss = criterion(output, part.ndata['tag'])
+            loss = criterion(output, tag)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             print(f"Rank {rank} 训练后的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias} {gcn_module.gcnLayer2.linear.weight} {gcn_module.gcnLayer2.linear.bias}")
-            # print(f"Rank {rank} 训练后feat的梯度： {part.ndata['h'].grad}")
+            # print(f"Rank {rank} 训练后feat的梯度： {feat.grad}")
             total_loss += loss.item()
         print(f'Rank {rank} Epoch {epoch + 1}, Loss: {total_loss:.4f}')
 
