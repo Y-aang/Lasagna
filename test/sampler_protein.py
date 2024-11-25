@@ -42,7 +42,7 @@ def run(rank, size):
         total_loss = 0
         for part, g_structure in train_loader:
             part.ndata['h'].requires_grad_(True)
-            output = gcn_module.forward(g_structure, part.ndata['h'], part.ndata['norm'])
+            output = gcn_module.forward(g_structure, part.ndata['h'])
             print("Rank", rank, '\n',
                 "节点的全局序号:", part.ndata['_ID'].tolist(), '\n',
                 "输出特征：", output, '\n',

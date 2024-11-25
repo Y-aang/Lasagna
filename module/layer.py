@@ -63,8 +63,8 @@ class GCNLayer(GNNBase):
         register_hook_for_model_param(self.parameters())
     
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat, norm):
-        feat = feat * norm
+    def forward(self, subgraph, feat):
+        feat = feat * subgraph.lasagna_data['norm']
         feat = super().distributed_comm(subgraph, feat)
         subgraph.nodes['_U'].data['h'] = feat
         subgraph.update_all(fn.copy_u(u='h', out='m'),
