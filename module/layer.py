@@ -64,7 +64,7 @@ class GCNLayer(GNNBase):
     
     # def forward(self, graphStructure, subgraphFeature):
     def forward(self, g_strt, feat):
-        feat = feat * g_strt.lasagna_data['norm']
+        feat = feat / g_strt.lasagna_data['in_degree']
         feat = super().distributed_comm(g_strt, feat)
         g_strt.nodes['_U'].data['h'] = feat
         g_strt.update_all(fn.copy_u(u='h', out='m'),

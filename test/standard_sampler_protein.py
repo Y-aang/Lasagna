@@ -23,16 +23,15 @@ class SimpleGCN(nn.Module):
     def forward(self, graph, features):
         with graph.local_scope():
             in_degrees = graph.in_degrees().float().clamp(min=1)  # 避免除以0
-            norm = torch.pow(in_degrees, -0.5)  # 计算 1/sqrt(in_degree)
-            norm = norm.to(features.device).unsqueeze(1)  # 保证维度对齐
+            in_degrees = in_degrees.to(features.device).unsqueeze(1)  # 保证维度对齐
             
-            graph.ndata['h'] = features * norm  # 节点特征归一化
+            graph.ndata['h'] = features / in_degrees  # 节点特征归一化
             graph.update_all(fn.copy_u('h', 'm'), fn.sum('m', 'h'))
             h = graph.ndata['h']
             h = self.gcn1(h)
             h = torch.relu(h)  # 激活函数
             
-            graph.ndata['h'] = h * norm  # 节点特征归一化
+            graph.ndata['h'] = h / in_degrees  # 节点特征归一化
             graph.update_all(fn.copy_u('h', 'm'), fn.sum('m', 'h'))
             h = graph.ndata['h']
             h = self.gcn2(h)

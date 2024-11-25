@@ -113,10 +113,8 @@ class DevDataset(Dataset):
         return graph
     
     def __add_norm(self, graph):
-        in_degrees = graph.in_degrees().float()
-        norm = torch.pow(in_degrees, -0.5)
-        norm[torch.isinf(norm)] = 0
-        graph.ndata['norm'] = norm.unsqueeze(-1)
+        in_degrees = graph.in_degrees().float().clamp(min=1)
+        graph.ndata['in_degree'] = in_degrees.unsqueeze(-1)
 
     def __prepare_feat_tag(self, graph):
         graph.ndata['feat'] = copy.deepcopy(graph.ndata['node_attr'])
@@ -229,7 +227,7 @@ class DevDataset(Dataset):
             g_strt.lasagna_data['_ID'] = global_node_ids
             g_strt.lasagna_data['feat'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
             g_strt.lasagna_data['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
-            g_strt.lasagna_data['norm'] = graph.ndata['norm'][global_node_ids].to(torch.float32)
+            g_strt.lasagna_data['in_degree'] = graph.ndata['in_degree'][global_node_ids].to(torch.float32)
 
     def __convert_maps_to_gid(self, send_map, recv_map):
         offset = dist.get_rank() - dist.get_rank() % self.part_size
