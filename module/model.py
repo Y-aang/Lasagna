@@ -35,7 +35,7 @@ class GCNProtein(nn.Module):
 
         
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat):
-        logits = self.gcnLayer1.forward(subgraph, feat)
-        logits = self.gcnLayer2.forward(subgraph, logits)
+    def forward(self, g_strt, feat):
+        logits = self.gcnLayer1.forward(g_strt, feat)
+        logits = self.gcnLayer2.forward(g_strt, logits)
         return logits

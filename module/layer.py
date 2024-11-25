@@ -63,13 +63,13 @@ class GCNLayer(GNNBase):
         register_hook_for_model_param(self.parameters())
     
     # def forward(self, graphStructure, subgraphFeature):
-    def forward(self, subgraph, feat):
-        feat = feat * subgraph.lasagna_data['norm']
-        feat = super().distributed_comm(subgraph, feat)
-        subgraph.nodes['_U'].data['h'] = feat
-        subgraph.update_all(fn.copy_u(u='h', out='m'),
+    def forward(self, g_strt, feat):
+        feat = feat * g_strt.lasagna_data['norm']
+        feat = super().distributed_comm(g_strt, feat)
+        g_strt.nodes['_U'].data['h'] = feat
+        g_strt.update_all(fn.copy_u(u='h', out='m'),
                                  fn.sum(msg='m', out='h'))
-        h = subgraph.nodes['_V'].data['h']
+        h = g_strt.nodes['_V'].data['h']
         h = self.linear(h)
         if self.activation:
             h = self.activation(h)

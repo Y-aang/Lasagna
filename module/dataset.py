@@ -24,7 +24,7 @@ class DevDataset(Dataset):
         self.length = 0
         self.savePath = "./dataset"
         os.makedirs(self.savePath, exist_ok=True)
-            
+        
         _meta_path = os.path.join(self.savePath, f'meta_data.pkl')
         if self.rank == 0:
             self.__process_graphs(dataset)
@@ -48,15 +48,15 @@ class DevDataset(Dataset):
         graph_save_path = os.path.join(self.savePath, f'graph_{index}')
         g_list_path = os.path.join(graph_save_path, f'g_list_{pid}.bin')
         with open(g_list_path, 'rb') as f:
-            g_structure = pickle.load(f)
+            g_strt = pickle.load(f)
         
         # transfer send/recv_map's partid into gid
-        g_structure.lasagna_data['send_map'], g_structure.lasagna_data['recv_map'] = self.__convert_maps_to_gid(
-            g_structure.lasagna_data['send_map'],
-            g_structure.lasagna_data['recv_map']
+        g_strt.lasagna_data['send_map'], g_strt.lasagna_data['recv_map'] = self.__convert_maps_to_gid(
+            g_strt.lasagna_data['send_map'],
+            g_strt.lasagna_data['recv_map']
         )
         
-        return g_structure, g_structure.lasagna_data['feat'], g_structure.lasagna_data['tag']
+        return g_strt, copy.deepcopy(g_strt.lasagna_data['feat']), copy.deepcopy(g_strt.lasagna_data['tag'])
 
     def __process_graphs(self, dataset):
         print("process 0 processing data...")
@@ -83,7 +83,7 @@ class DevDataset(Dataset):
         # step 1: graph partition (split the graph in to k parts using metis_partition)
         parts = metis_partition(graph, k=self.part_size)
         
-        # step 2: prepare basic info into subgraph (node_part, global_to_local_maps, part.ndata['h', 'tag', 'norm'])
+        # step 2: prepare basic info into subgraph (node_part, global_to_local_maps)
         node_part, global_to_local_maps = self.__assign_subgraph_data(graph, parts)
 
         # step 3: generate send/recv_map
@@ -100,7 +100,7 @@ class DevDataset(Dataset):
         g_list = self.__construct_graph(graph, parts, send_map, recv_map, global_to_local_maps, node_part)
         
         # step 7: setattr to graph.lasagna_data
-        self.__construct_lasagna_data(g_list, parts, local_send_map, local_recv_map)
+        self.__construct_lasagna_data(g_list, graph, parts, local_send_map, local_recv_map)
         
         return g_list
         
@@ -131,11 +131,7 @@ class DevDataset(Dataset):
         node_part = torch.empty(graph.num_nodes(), dtype=torch.int64)       # partition id (pid) for each node
         global_to_local_maps = {}
         for part_id, part in parts.items():
-            global_node_ids = part.ndata['_ID']
-            part.ndata['feat'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
-            part.ndata['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
-            part.ndata['norm'] = graph.ndata['norm'][global_node_ids].to(torch.float32)
-            global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(global_node_ids)}
+            global_to_local = {global_id.item(): local_id for local_id, global_id in enumerate(part.ndata['_ID'])}
             global_to_local_maps[part_id] = global_to_local
             node_part[part.ndata['_ID']] = part_id
         return node_part, global_to_local_maps
@@ -224,15 +220,16 @@ class DevDataset(Dataset):
         
         return g_list
 
-    def __construct_lasagna_data(self, g_list, parts, send_map, recv_map):
-        for idx, graph in enumerate(g_list):
-            setattr(graph, 'lasagna_data', {})
-            graph.lasagna_data['send_map'] = send_map
-            graph.lasagna_data['recv_map'] = recv_map
-            graph.lasagna_data['norm'] = parts[idx].ndata['norm']
-            graph.lasagna_data['_ID'] = parts[idx].ndata['_ID']
-            graph.lasagna_data['feat'] = parts[idx].ndata['feat']
-            graph.lasagna_data['tag'] = parts[idx].ndata['tag']
+    def __construct_lasagna_data(self, g_list, graph, parts, send_map, recv_map):
+        for idx, g_strt in enumerate(g_list):
+            setattr(g_strt, 'lasagna_data', {})
+            g_strt.lasagna_data['send_map'] = send_map
+            g_strt.lasagna_data['recv_map'] = recv_map
+            global_node_ids = parts[idx].ndata['_ID']
+            g_strt.lasagna_data['_ID'] = global_node_ids
+            g_strt.lasagna_data['feat'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
+            g_strt.lasagna_data['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
+            g_strt.lasagna_data['norm'] = graph.ndata['norm'][global_node_ids].to(torch.float32)
 
     def __convert_maps_to_gid(self, send_map, recv_map):
         offset = dist.get_rank() - dist.get_rank() % self.part_size

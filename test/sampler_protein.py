@@ -40,11 +40,11 @@ def run(rank, size):
     for epoch in range(1):
         gcn_module.train()
         total_loss = 0
-        for g_structure, feat, tag in train_loader:
+        for g_strt, feat, tag in train_loader:
             feat.requires_grad_(True)
-            output = gcn_module.forward(g_structure, feat)
+            output = gcn_module.forward(g_strt, feat)
             print("Rank", rank, '\n',
-                "节点的全局序号:", g_structure.lasagna_data['_ID'].tolist(), '\n',
+                "节点的全局序号:", g_strt.lasagna_data['_ID'].tolist(), '\n',
                 "输出特征：", output, '\n',
                 "节点 target:", tag,
             )
