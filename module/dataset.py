@@ -236,6 +236,7 @@ class DevDataset(Dataset):
             graph.lasagna_data['send_map'] = send_map
             graph.lasagna_data['recv_map'] = recv_map
             graph.lasagna_data['norm'] = parts[idx].ndata['norm']
+            graph.lasagna_data['_ID'] = parts[idx].ndata['_ID']
 
     def __convert_maps_to_gid(self, send_map, recv_map):
         offset = dist.get_rank() - dist.get_rank() % self.part_size

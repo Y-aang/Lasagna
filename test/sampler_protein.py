@@ -44,7 +44,7 @@ def run(rank, size):
             part.ndata['h'].requires_grad_(True)
             output = gcn_module.forward(g_structure, part.ndata['h'])
             print("Rank", rank, '\n',
-                "节点的全局序号:", part.ndata['_ID'].tolist(), '\n',
+                "节点的全局序号:", g_structure.lasagna_data['_ID'].tolist(), '\n',
                 "输出特征：", output, '\n',
                 "节点 target:", part.ndata['tag'],
             )
