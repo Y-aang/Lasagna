@@ -1,5 +1,5 @@
 import dgl
-from dgl.data import RedditDataset, YelpDataset, TUDataset
+from dgl.data import RedditDataset, YelpDataset, TUDataset, PPIDataset
 from dgl.partition import metis_partition
 import torch
 import torch.distributed as dist
@@ -13,11 +13,13 @@ import pickle
 
 
 class DevDataset(Dataset):
-    def __init__(self, datasetName, datasetPath, part_size, nodeNumber=None, ):
+    def __init__(self, datasetName, part_size, datasetPath=None, mode=None):
         self.rank = dist.get_rank()
         self.part_size = part_size
-        if datasetName == 'reddit':
-            dataset = RedditDataset(raw_dir=datasetPath)
+        self.dataset_name = datasetName
+        if datasetName == 'ppi':
+            dataset = PPIDataset(mode=mode, raw_dir=datasetPath)
+            dataset = Subset(dataset, range(2))
         elif datasetName == 'proteins':
             dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath)
             dataset = Subset(dataset, range(2))
@@ -61,7 +63,10 @@ class DevDataset(Dataset):
     def __process_graphs(self, dataset):
         print("process 0 processing data...")
         for idx, data in enumerate(dataset):
-            graph = data[0]
+            if self.dataset_name == 'proteins':
+                graph = data[0]
+            else:
+                graph = data
             if graph.is_homogeneous:
                 try:
                     graph = self.__add_self_loop(graph)
@@ -117,8 +122,12 @@ class DevDataset(Dataset):
         graph.ndata['in_degree'] = in_degrees.unsqueeze(-1)
 
     def __prepare_feat_tag(self, graph):
-        graph.ndata['feat'] = copy.deepcopy(graph.ndata['node_attr'])
-        graph.ndata['tag'] = copy.deepcopy(graph.ndata['node_labels'])
+        if self.dataset_name == 'proteins':
+            graph.ndata['feat'] = copy.deepcopy(graph.ndata['node_attr'])
+            graph.ndata['tag'] = copy.deepcopy(graph.ndata['node_labels'])
+        elif self.dataset_name == 'ppi':
+            # graph.ndata['feat'] = copy.deepcopy(graph.ndata['feat'])
+            graph.ndata['tag'] = copy.deepcopy(graph.ndata['label'])
         
     def __save_graph(self, g_list, graph_save_path, k):
         for i in range(k):
