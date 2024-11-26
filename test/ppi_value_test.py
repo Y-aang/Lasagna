@@ -14,7 +14,7 @@ from datetime import timedelta
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.layer import GCNLayer
-from module.model import GCNPPI, GCNProtein
+from module.model import GCNPPI_SAGE, GCNProtein
 from module.dataset import DevDataset, custom_collate_fn
 from module.sampler import LasagnaSampler
 from helper.all_to_all import all_to_all
@@ -30,18 +30,20 @@ def init_process(rank, size, fn, backend='gloo'):
 def run(rank, size):
     print(f"Rank {rank}: 进入run函数")
     # gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
-    part_size = 4
-    torch.manual_seed(0.1)
+    part_size = 2
+    torch.manual_seed(43)
     # gcn_module = GCNProtein(in_feats=1, out_feats=1, part_size=part_size)
-    gcn_module = GCNPPI(in_feats=50, out_feats=121, part_size=part_size)
-    criterion = nn.L1Loss(reduction='sum')
-    optimizer = optim.SGD(gcn_module.parameters(), lr=0.1)
-    train_dataset = DevDataset("ppi", part_size=part_size, mode='train')
+    gcn_module = GCNPPI_SAGE(in_feats=50, out_feats=121, part_size=part_size)
+    criterion = torch.nn.BCEWithLogitsLoss(reduction='sum')
+    optimizer = torch.optim.Adam(gcn_module.parameters(),
+                                 lr=0.001,
+                                 weight_decay=0)
+    train_dataset = DevDataset("ppi", part_size=part_size, mode='train', process_data=False)
     # train_dataset = DevDataset("proteins", part_size=part_size)
     train_sampler = LasagnaSampler(train_dataset)
     train_loader = DataLoader(train_dataset, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
-    for epoch in range(20):
+    for epoch in range(5000):
         gcn_module.train()
         total_loss = 0
         for g_strt, feat, tag in train_loader:
@@ -61,7 +63,11 @@ def run(rank, size):
             # print(f"Rank {rank} 训练后的参数： {gcn_module.linear1.weight} {gcn_module.linear1.bias}")
             # print(f"Rank {rank} 训练后feat的梯度： {feat.grad}")
             total_loss += loss.item()
-        print(f'Rank {rank} Epoch {epoch + 1}, Loss: {total_loss:.4f}')
+            # print(f'Rank {rank} Epoch {epoch + 1}, Loss: {loss:.4f}')
+        total_loss = torch.tensor(total_loss, dtype=torch.float)
+        dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
+        if dist.get_rank() == 0:
+            print(f'Rank {rank} Epoch {epoch + 1}, Total Loss: {total_loss:.4f}')
 
 
 if __name__ == "__main__":

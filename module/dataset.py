@@ -13,34 +13,34 @@ import pickle
 
 
 class DevDataset(Dataset):
-    def __init__(self, datasetName, part_size, datasetPath=None, mode=None):
+    def __init__(self, datasetName, part_size, datasetPath=None, mode=None, process_data=True):
         self.rank = dist.get_rank()
         self.part_size = part_size
         self.dataset_name = datasetName
-        if datasetName == 'ppi':
-            dataset = PPIDataset(mode=mode, raw_dir=datasetPath)
-            dataset = Subset(dataset, range(2))
-        elif datasetName == 'proteins':
-            dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath)
-            dataset = Subset(dataset, range(2))
-        self.length = 0
         self.savePath = "./dataset"
-        os.makedirs(self.savePath, exist_ok=True)
-        
         _meta_path = os.path.join(self.savePath, f'meta_data.pkl')
-        if self.rank == 0:
-            self.__process_graphs(dataset)
-            
-            os.makedirs(os.path.dirname(_meta_path), exist_ok=True)
-            with open(_meta_path, 'wb') as f:
-                pickle.dump(self.length, f)
-        else:
-            print(dist.get_rank(), 'waiting...')
-        dist.barrier()
+        
+        if process_data:
+            if datasetName == 'ppi':
+                dataset = PPIDataset(mode=mode, raw_dir=datasetPath)
+                dataset = Subset(dataset, range(4))
+            elif datasetName == 'proteins':
+                dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath)
+                dataset = Subset(dataset, range(2))
+            self.length = 0
+            os.makedirs(self.savePath, exist_ok=True)
+            if self.rank == 0:
+                self.__process_graphs(dataset)
+                os.makedirs(os.path.dirname(_meta_path), exist_ok=True)
+                with open(_meta_path, 'wb') as f:
+                    pickle.dump(self.length, f)
+            else:
+                print(dist.get_rank(), 'waiting...')
+            dist.barrier()
+            print(dist.get_rank(), 'dataset processing finished...')
         
         with open(_meta_path, 'rb') as f:
             self.length = pickle.load(f)
-        print(dist.get_rank(), 'dataset processing finished...')
         
     def __len__(self):
         return self.length
