@@ -13,7 +13,7 @@ def parameter_hook():
         # recv_list[rank] = grad
         # grad_sum = sum(recv_list)
         # return grad_sum
-        dist.all_reduce(grad, op=dist.ReduceOp.SUM)
+        dist.all_reduce(grad, op=dist.ReduceOp.SUM, device='cuda')
         return grad
     return communicate_grad
 
@@ -41,7 +41,7 @@ def feat_hook(send_map, recv_map):
 
 def average_loss(loss, n_node):
     n_train = torch.tensor(n_node, dtype=torch.float)
-    dist.all_reduce(n_train, op=dist.ReduceOp.SUM)
+    dist.all_reduce(n_train, op=dist.ReduceOp.SUM, device='cuda')
     loss /= n_train
 
 

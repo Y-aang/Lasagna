@@ -10,16 +10,17 @@ class GNNBase(nn.Module):
     def __init__(self):
         super(GNNBase, self).__init__()
     
-    def distributed_comm(self, subgraph, feat):
+    def distributed_comm(self, g_strt, feat):
         dist.barrier()
         # feat.register_hook(communicate_grad)
-        send_map = subgraph.lasagna_data['send_map']
-        recv_map = subgraph.lasagna_data['recv_map']
+        send_map = g_strt.lasagna_data['send_map']
+        recv_map = g_strt.lasagna_data['recv_map']
         send_list, recv_list = self.__prepare_comm_data(feat, send_map, recv_map)
         
         dist.barrier()
         all_to_all(recv_list, send_list)
-        feat = self.__process_recv_data(subgraph, feat, recv_map, recv_list)
+        print("pass all to all")
+        feat = self.__process_recv_data(g_strt, feat, recv_map, recv_list)
         
         if feat.requires_grad:
             feat.register_hook(feat_hook(send_map, recv_map))
@@ -30,19 +31,19 @@ class GNNBase(nn.Module):
     def __prepare_comm_data(self, feat, send_map, recv_map):
         rank = dist.get_rank()
         size = dist.get_world_size() 
-        send_list = [torch.tensor([0.0])] * size
+        send_list = [torch.tensor([0.0], device='cuda')] * size
         for part_v in send_map[rank]:
-            send_feat = feat[send_map[rank][part_v]].clone()
+            send_feat = feat[send_map[rank][part_v]].clone().to('cuda')
             send_list[part_v] = send_feat
-        recv_list = [torch.empty(1)] * size
+        recv_list = [torch.empty(1, device='cuda')] * size
         for part_v in recv_map[rank]:
-            recv_feat = torch.empty((len(recv_map[rank][part_v]), feat.shape[1])) # num_nodes_to_receive， feature_dim
+            recv_feat = torch.empty((len(recv_map[rank][part_v]), feat.shape[1]), device='cuda') # num_nodes_to_receive， feature_dim
             recv_list[part_v] = recv_feat
         return send_list, recv_list
     
-    def __process_recv_data(self, subgraph, feat, recv_map, recv_list):
+    def __process_recv_data(self, g_strt, feat, recv_map, recv_list):
         rank = dist.get_rank()
-        feat_expand = torch.empty(subgraph.num_nodes('_U') - feat.shape[0], feat.shape[1])
+        feat_expand = torch.empty(g_strt.num_nodes('_U') - feat.shape[0], feat.shape[1])
         feat = torch.cat((feat, feat_expand), dim=0)
         for part_v in recv_map[rank]:
             recv_feat = recv_list[part_v]
@@ -64,7 +65,7 @@ class GCNLayer(GNNBase):
     
     # def forward(self, graphStructure, subgraphFeature):
     def forward(self, g_strt, feat):
-        feat = feat / g_strt.lasagna_data['in_degree']
+        feat = feat / g_strt.lasagna_data['in_degree'].to('cuda')
         feat = super().distributed_comm(g_strt, feat)
         g_strt.nodes['_U'].data['h'] = feat
         g_strt.update_all(fn.copy_u(u='h', out='m'),

@@ -13,12 +13,14 @@ def all_to_all(recv_list: List[Tensor], send_list: List[Tensor]):
     for i in range(1, world_size):
         send_pid = (self_rank + i) % world_size
         # print(f'rsend from {self_rank} to {target} {send_list[target].shape}')
-        feature = dist.isend(send_list[send_pid], send_pid + offset)
+        assert send_list[send_pid].is_cuda, f"send_list[{send_pid}] not on gpu"
+        send_req = dist.isend(send_list[send_pid], send_pid + offset)
         
-        recv_pid = (self_rank - i) % world_size
+        recv_req = (self_rank - i) % world_size
         # print(f'recieve {self_rank} from {recv_target} {recv_list[recv_target].shape}')
-        recv = dist.irecv(recv_list[recv_pid], recv_pid + offset)
-        feature.wait()
+        assert recv_list[recv_req].is_cuda, f"recv_list[{recv_req}] not on gpu"
+        recv = dist.irecv(recv_list[recv_req], recv_req + offset)
+        send_req.wait()
         recv.wait()
         # print(f'recieved {self_rank} from {recv_target}')
         

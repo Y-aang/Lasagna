@@ -67,7 +67,7 @@ optimizer.zero_grad()  # 初始化梯度
 outputs = []
 losses = []
 
-print("检查模型参数：")
+print("检查模型参数：")·
 for name, param in model.named_parameters():
     print(f"{name}: {param}")
 

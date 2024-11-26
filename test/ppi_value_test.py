@@ -21,9 +21,10 @@ from helper.all_to_all import all_to_all
 from helper.utils import average_loss
 
 # 初始化分布式环境
-def init_process(rank, size, fn, backend='gloo'):
+def init_process(rank, size, fn, backend='nccl'):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '29515'
+    torch.cuda.set_device(rank)
     dist.init_process_group(backend, rank=rank, world_size=size, init_method='env://', timeout=timedelta(minutes=1.5))
     fn(rank, size)
 
@@ -32,10 +33,10 @@ def run(rank, size):
     # gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
     part_size = 2
     torch.manual_seed(43)
-    # gcn_module = GCNProtein(in_feats=1, out_feats=1, part_size=part_size)
-    gcn_module = GCNPPI_SAGE(in_feats=50, out_feats=121, part_size=part_size)
+    # model = GCNProtein(in_feats=1, out_feats=1, part_size=part_size)
+    model = GCNPPI_SAGE(in_feats=50, out_feats=121, part_size=part_size).cuda()
     criterion = torch.nn.BCEWithLogitsLoss(reduction='sum')
-    optimizer = torch.optim.Adam(gcn_module.parameters(),
+    optimizer = torch.optim.Adam(model.parameters(),
                                  lr=0.001,
                                  weight_decay=0)
     train_dataset = DevDataset("ppi", part_size=part_size, mode='train', process_data=False)
@@ -44,27 +45,27 @@ def run(rank, size):
     train_loader = DataLoader(train_dataset, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
     for epoch in range(5000):
-        gcn_module.train()
+        model.train()
         total_loss = 0
         for g_strt, feat, tag in train_loader:
             feat.requires_grad_(True)
-            output = gcn_module.forward(g_strt, feat)
+            output = model.forward(g_strt, feat.to('cuda'))
             # print("Rank", rank, '\n',
             #     "节点的全局序号:", g_strt.lasagna_data['_ID'].tolist(), '\n',
             #     "输出特征：", output, '\n',
             #     "节点 target:", tag,
             # )
-            loss = criterion(output, tag)
+            loss = criterion(output, tag.to('cuda'))
             average_loss(loss, g_strt.lasagna_data['n_node'])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            # print(f"Rank {rank} 训练后的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias} {gcn_module.gcnLayer2.linear.weight} {gcn_module.gcnLayer2.linear.bias}")
-            # print(f"Rank {rank} 训练后的参数： {gcn_module.linear1.weight} {gcn_module.linear1.bias}")
+            # print(f"Rank {rank} 训练后的参数： {model.gcnLayer1.linear.weight} {model.gcnLayer1.linear.bias} {model.gcnLayer2.linear.weight} {model.gcnLayer2.linear.bias}")
+            # print(f"Rank {rank} 训练后的参数： {model.linear1.weight} {model.linear1.bias}")
             # print(f"Rank {rank} 训练后feat的梯度： {feat.grad}")
             total_loss += loss.item()
             # print(f'Rank {rank} Epoch {epoch + 1}, Loss: {loss:.4f}')
-        total_loss = torch.tensor(total_loss, dtype=torch.float)
+        total_loss = torch.tensor(total_loss, dtype=torch.float, device='cuda')
         dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
         if dist.get_rank() == 0:
             print(f'Rank {rank} Epoch {epoch + 1}, Total Loss: {total_loss:.4f}')
