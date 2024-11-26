@@ -237,6 +237,7 @@ class DevDataset(Dataset):
             g_strt.lasagna_data['feat'] = graph.ndata['feat'][global_node_ids].to(torch.float32)
             g_strt.lasagna_data['tag'] = graph.ndata['tag'][global_node_ids].to(torch.float32)
             g_strt.lasagna_data['in_degree'] = graph.ndata['in_degree'][global_node_ids].to(torch.float32)
+            g_strt.lasagna_data['n_node'] = parts[idx].num_nodes()
 
     def __convert_maps_to_gid(self, send_map, recv_map):
         offset = dist.get_rank() - dist.get_rank() % self.part_size

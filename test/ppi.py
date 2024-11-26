@@ -18,6 +18,7 @@ from module.model import GCNPPI
 from module.dataset import DevDataset, custom_collate_fn
 from module.sampler import LasagnaSampler
 from helper.all_to_all import all_to_all
+from helper.utils import average_loss
 
 # 初始化分布式环境
 def init_process(rank, size, fn, backend='gloo'):
@@ -50,6 +51,7 @@ def run(rank, size):
             #     "节点 target:", tag,
             # )
             loss = criterion(output, tag)
+            average_loss(loss, g_strt.lasagna_data['n_node'])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

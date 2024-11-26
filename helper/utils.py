@@ -37,6 +37,11 @@ def feat_hook(send_map, recv_map):
         return grad
     return communicate_grad
 
+def average_loss(loss, n_node):
+    n_train = torch.tensor(n_node, dtype=torch.float)
+    dist.all_reduce(n_train, op=dist.ReduceOp.SUM)
+    loss /= n_train
+
 
 # def communicate_grad(grad: torch.Tensor):
 #     # start to send the grad and retrieve
