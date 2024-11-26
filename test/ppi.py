@@ -14,7 +14,7 @@ from datetime import timedelta
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.layer import GCNLayer
-from module.model import GCNPPI
+from module.model import GCNPPI, GCNProtein
 from module.dataset import DevDataset, custom_collate_fn
 from module.sampler import LasagnaSampler
 from helper.all_to_all import all_to_all
@@ -31,6 +31,8 @@ def run(rank, size):
     print(f"Rank {rank}: 进入run函数")
     # gcn_layer = GCNLayer(in_feats=3, out_feats=3, num_parts=num_parts)
     part_size = 4
+    torch.manual_seed(0.1)
+    # gcn_module = GCNProtein(in_feats=1, out_feats=1, part_size=part_size)
     gcn_module = GCNPPI(in_feats=50, out_feats=121, part_size=part_size)
     criterion = nn.L1Loss(reduction='sum')
     optimizer = optim.SGD(gcn_module.parameters(), lr=0.1)
@@ -39,7 +41,7 @@ def run(rank, size):
     train_sampler = LasagnaSampler(train_dataset)
     train_loader = DataLoader(train_dataset, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
-    for epoch in range(2):
+    for epoch in range(1):
         gcn_module.train()
         total_loss = 0
         for g_strt, feat, tag in train_loader:
@@ -55,7 +57,8 @@ def run(rank, size):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            # print(f"Rank {rank} 训练后的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias} {gcn_module.gcnLayer2.linear.weight} {gcn_module.gcnLayer2.linear.bias}")
+            print(f"Rank {rank} 训练后的参数： {gcn_module.gcnLayer1.linear.weight} {gcn_module.gcnLayer1.linear.bias} {gcn_module.gcnLayer2.linear.weight} {gcn_module.gcnLayer2.linear.bias}")
+            # print(f"Rank {rank} 训练后的参数： {gcn_module.linear1.weight} {gcn_module.linear1.bias}")
             # print(f"Rank {rank} 训练后feat的梯度： {feat.grad}")
             total_loss += loss.item()
         print(f'Rank {rank} Epoch {epoch + 1}, Loss: {total_loss:.4f}')

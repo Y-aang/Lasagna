@@ -4,15 +4,17 @@ from helper.all_to_all import all_to_all
 
 def parameter_hook():
     def communicate_grad(grad):
-        rank = dist.get_rank()
-        size = dist.get_world_size() 
-        send_list = [grad.clone() for _ in range(size)]
-        recv_list = [torch.zeros_like(grad) for _ in range(size)]
-        all_to_all(recv_list, send_list)
+        # rank = dist.get_rank()
+        # size = dist.get_world_size() 
+        # send_list = [grad.clone() for _ in range(size)]
+        # recv_list = [torch.zeros_like(grad) for _ in range(size)]
+        # all_to_all(recv_list, send_list)
         
-        recv_list[rank] = grad
-        grad_sum = sum(recv_list)
-        return grad_sum
+        # recv_list[rank] = grad
+        # grad_sum = sum(recv_list)
+        # return grad_sum
+        dist.all_reduce(grad, op=dist.ReduceOp.SUM)
+        return grad
     return communicate_grad
 
 def register_hook_for_model_param(params):

@@ -1,7 +1,9 @@
 import torch.nn as nn
 import torch.distributed as dist
 import torch.nn.functional as F
+import torch.nn.init as init
 from module.layer import GCNLayer
+from helper.utils import register_hook_for_model_param
 
 class myGCN(nn.Module):
     def __init__(self, in_feats, out_feats, num_parts):
@@ -44,11 +46,16 @@ class GCNPPI(nn.Module):
     def __init__(self, in_feats, out_feats, part_size):
         super(GCNPPI, self).__init__()
         self.gcnLayer1 = GCNLayer(in_feats=in_feats, out_feats=2048, part_size=part_size, activation=F.relu)
-        self.gcnLayer2 = GCNLayer(in_feats=2048, out_feats=out_feats, part_size=part_size, activation=F.relu)
-
+        self.gcnLayer2 = GCNLayer(in_feats=2048, out_feats=2048, part_size=part_size, activation=F.relu)
+        self.linear1 = nn.Linear(2048, out_feats)
         
+        init.constant_(self.linear1.weight, 1)
+        init.constant_(self.linear1.bias, 1)
+        register_hook_for_model_param(self.linear1.parameters())
+
     # def forward(self, graphStructure, subgraphFeature):
     def forward(self, g_strt, feat):
         logits = self.gcnLayer1.forward(g_strt, feat)
         logits = self.gcnLayer2.forward(g_strt, logits)
+        logits = self.linear1.forward(logits)
         return logits
