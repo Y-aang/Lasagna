@@ -13,7 +13,8 @@ def parameter_hook():
         # recv_list[rank] = grad
         # grad_sum = sum(recv_list)
         # return grad_sum
-        dist.all_reduce(grad, op=dist.ReduceOp.SUM, device='cuda')
+        # dist.all_reduce(grad, op=dist.ReduceOp.SUM, device='cuda')
+        dist.all_reduce(grad, op=dist.ReduceOp.SUM)
         return grad
     return communicate_grad
 
@@ -26,12 +27,12 @@ def feat_hook(send_map, recv_map):
     def communicate_grad(grad):
         rank = dist.get_rank()
         size = dist.get_world_size() 
-        send_list = [torch.tensor([0.0])] * size
-        recv_list = [torch.tensor([0.0])] * size
+        send_list = [torch.tensor([0.0], device='cuda')] * size
+        recv_list = [torch.tensor([0.0], device='cuda')] * size
         for src, feat_idx in recv_map[rank].items():
             send_list[src] = grad[feat_idx]
         for tgt, feat_idx in send_map[rank].items():
-            recv_list[tgt] = torch.empty((len(feat_idx), grad.shape[1]))
+            recv_list[tgt] = torch.empty((len(feat_idx), grad.shape[1]), device='cuda')
         all_to_all(recv_list, send_list)
         for tgt, feat_idx in send_map[rank].items():
             grad[feat_idx] = grad[feat_idx] + recv_list[tgt]
@@ -41,7 +42,8 @@ def feat_hook(send_map, recv_map):
 
 def average_loss(loss, n_node):
     n_train = torch.tensor(n_node, dtype=torch.float)
-    dist.all_reduce(n_train, op=dist.ReduceOp.SUM, device='cuda')
+    # dist.all_reduce(n_train, op=dist.ReduceOp.SUM, device='cuda')
+    dist.all_reduce(n_train.to('cuda'), op=dist.ReduceOp.SUM)
     loss /= n_train
 
 

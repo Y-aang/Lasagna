@@ -26,7 +26,7 @@ def run(rank, size):
 
 def init_process(rank, size, fn, backend='nccl'):
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '29515'
+    os.environ['MASTER_PORT'] = '29518'
     torch.cuda.set_device(rank)
     dist.init_process_group(backend, rank=rank, world_size=size, init_method='env://', timeout=timedelta(minutes=1.5))
     fn(rank, size)

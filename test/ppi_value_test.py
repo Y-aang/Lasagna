@@ -49,13 +49,17 @@ def run(rank, size):
         total_loss = 0
         for g_strt, feat, tag in train_loader:
             feat.requires_grad_(True)
-            output = model.forward(g_strt, feat.to('cuda'))
+            device = torch.device('cuda')
+            g_strt = g_strt.to(device)
+            feat = feat.to(device)
+            tag = tag.to(device)
+            output = model.forward(g_strt, feat)
             # print("Rank", rank, '\n',
             #     "节点的全局序号:", g_strt.lasagna_data['_ID'].tolist(), '\n',
             #     "输出特征：", output, '\n',
             #     "节点 target:", tag,
             # )
-            loss = criterion(output, tag.to('cuda'))
+            loss = criterion(output, tag)
             average_loss(loss, g_strt.lasagna_data['n_node'])
             optimizer.zero_grad()
             loss.backward()

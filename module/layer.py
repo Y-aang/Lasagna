@@ -18,8 +18,9 @@ class GNNBase(nn.Module):
         send_list, recv_list = self.__prepare_comm_data(feat, send_map, recv_map)
         
         dist.barrier()
+        # print("before pass all to all")
         all_to_all(recv_list, send_list)
-        print("pass all to all")
+        # print("pass all to all")
         feat = self.__process_recv_data(g_strt, feat, recv_map, recv_list)
         
         if feat.requires_grad:
@@ -43,7 +44,7 @@ class GNNBase(nn.Module):
     
     def __process_recv_data(self, g_strt, feat, recv_map, recv_list):
         rank = dist.get_rank()
-        feat_expand = torch.empty(g_strt.num_nodes('_U') - feat.shape[0], feat.shape[1])
+        feat_expand = torch.empty(g_strt.num_nodes('_U') - feat.shape[0], feat.shape[1], device=feat.device)
         feat = torch.cat((feat, feat_expand), dim=0)
         for part_v in recv_map[rank]:
             recv_feat = recv_list[part_v]
