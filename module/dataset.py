@@ -17,13 +17,13 @@ class DevDataset(Dataset):
         self.rank = dist.get_rank()
         self.part_size = part_size
         self.dataset_name = datasetName
-        self.savePath = "./dataset"
+        self.savePath = os.path.join("./dataset", datasetName, mode or '')
         _meta_path = os.path.join(self.savePath, f'meta_data.pkl')
         
         if process_data:
             if datasetName == 'ppi':
                 dataset = PPIDataset(mode=mode, raw_dir=datasetPath)
-                dataset = Subset(dataset, range(4))
+                # dataset = Subset(dataset, range(4))
             elif datasetName == 'proteins':
                 dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath)
                 dataset = Subset(dataset, range(2))

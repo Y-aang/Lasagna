@@ -40,9 +40,12 @@ def run(rank, size):
                                  lr=0.001,
                                  weight_decay=0)
     train_dataset = DevDataset("ppi", part_size=part_size, mode='train', process_data=False)
-    # train_dataset = DevDataset("proteins", part_size=part_size)
     train_sampler = LasagnaSampler(train_dataset)
     train_loader = DataLoader(train_dataset, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
+    
+    test_dataset = DevDataset("ppi", part_size=part_size, mode='test', process_data=False)
+    test_sampler = LasagnaSampler(test_dataset)
+    test_loader = DataLoader(test_dataset, sampler=test_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
     for epoch in range(5000):
         model.train()

@@ -39,19 +39,16 @@ def all_to_all(recv_list: List[Tensor], send_list: List[Tensor]):
         send_pid = (self_rank + i) % world_size
         recv_pid = (self_rank - i) % world_size
 
-        # 确保张量在 GPU 上
         assert send_list[send_pid].is_cuda, f"send_list[{send_pid}] not on GPU"
         assert recv_list[recv_pid].is_cuda, f"recv_list[{recv_pid}] not on GPU"
 
-        # 构建通信操作列表
         op_list = []
         op_list.append(dist.P2POp(dist.isend, send_list[send_pid], send_pid + offset))
         op_list.append(dist.P2POp(dist.irecv, recv_list[recv_pid], recv_pid + offset))
 
-        # 批量执行通信操作
         reqs = dist.batch_isend_irecv(op_list)
         for req in reqs:
-            req.wait()  # 等待通信完成
+            req.wait()
 
     dist.barrier()
     return

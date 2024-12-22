@@ -47,6 +47,9 @@ def average_loss(loss, n_node):
     loss /= n_train
 
 
+# def evaluate
+
+
 # def communicate_grad(grad: torch.Tensor):
 #     # start to send the grad and retrieve
 #     self_rank = dist.get_rank()
