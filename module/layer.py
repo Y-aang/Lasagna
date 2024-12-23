@@ -76,3 +76,31 @@ class GCNLayer(GNNBase):
         if self.activation:
             h = self.activation(h)
         return h
+    
+class GraphSAGELayer(GNNBase):
+    def __init__(self, in_feats, out_feats, activation=None):
+        super(GraphSAGELayer, self).__init__()
+        self.linear1 = nn.Linear(in_feats, out_feats)
+        self.linear2 = nn.Linear(in_feats, out_feats)
+        self.activation = activation
+
+        # init.constant_(self.linear1.weight, 1)
+        # init.constant_(self.linear1.bias, 1)
+        # init.constant_(self.linear2.weight, 1)
+        # init.constant_(self.linear2.bias, 1)
+        
+        register_hook_for_model_param(self.parameters())
+
+    def forward(self, g_strt, feat):
+        feat = super().distributed_comm(g_strt, feat)
+        degs = g_strt.lasagna_data['in_degree'].to('cuda')
+        num_dst = g_strt.num_nodes('_V')
+        g_strt.nodes['_U'].data['h'] = feat
+        g_strt['_E'].update_all(fn.copy_u(u='h', out='m'),
+                            fn.mean(msg='m', out='h'),
+                            etype='_E')
+        ah = g_strt.nodes['_V'].data['h'] / degs
+        h = self.linear1(feat[0:num_dst]) + self.linear2(ah)
+        return h
+        
+
