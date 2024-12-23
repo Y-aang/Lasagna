@@ -4,7 +4,7 @@ from dgl.partition import metis_partition
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.data import Subset
+from torch.utils.data import Subset, ConcatDataset
 from multiprocessing import Barrier
 import os
 from tqdm import tqdm
@@ -22,7 +22,12 @@ class DevDataset(Dataset):
         
         if process_data:
             if datasetName == 'ppi':
-                dataset = PPIDataset(mode=mode, raw_dir=datasetPath)
+                if mode == 'train':
+                    dataset = PPIDataset(mode=mode, raw_dir=datasetPath)
+                else:
+                    test_dataset = PPIDataset(mode='test', raw_dir=datasetPath)
+                    valid_dataset = PPIDataset(mode='valid', raw_dir=datasetPath)
+                    dataset = ConcatDataset([test_dataset, valid_dataset])
                 # dataset = Subset(dataset, range(4))
             elif datasetName == 'proteins':
                 dataset = TUDataset(name='PROTEINS', raw_dir=datasetPath)

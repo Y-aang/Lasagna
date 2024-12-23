@@ -47,7 +47,29 @@ def average_loss(loss, n_node):
     loss /= n_train
 
 
-# def evaluate
+def evaluate(model, test_loader):
+    true_pos = torch.tensor([0], device='cuda')
+    true_neg = torch.tensor([0], device='cuda')
+    false_pos = torch.tensor([0], device='cuda')
+    false_neg = torch.tensor([0], device='cuda')
+    for g_strt, feat, tag in test_loader:
+        device = torch.device('cuda')
+        g_strt = g_strt.to(device)
+        feat = feat.to(device)
+        tag = tag.to(device)
+        logits = model.forward(g_strt, feat)
+        y_true = tag.long()
+        y_pred = (logits > 0).long()
+        true_pos += (y_true * y_pred).sum()
+        false_pos += ((1 - y_true) * y_pred).sum()
+        false_neg += (y_true * (1 - y_pred)).sum()
+
+    dist.all_reduce(true_pos, op=dist.ReduceOp.SUM)
+    dist.all_reduce(true_neg, op=dist.ReduceOp.SUM)
+    dist.all_reduce(false_pos, op=dist.ReduceOp.SUM)
+    dist.all_reduce(false_neg, op=dist.ReduceOp.SUM)
+
+    return (true_pos / (true_pos + 0.5 * (false_pos + false_neg))).item()
 
 
 # def communicate_grad(grad: torch.Tensor):

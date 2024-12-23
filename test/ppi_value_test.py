@@ -18,7 +18,7 @@ from module.model import GCNPPI_SAGE, GCNProtein
 from module.dataset import DevDataset, custom_collate_fn
 from module.sampler import LasagnaSampler
 from helper.all_to_all import all_to_all
-from helper.utils import average_loss
+from helper.utils import average_loss, evaluate
 
 # 初始化分布式环境
 def init_process(rank, size, fn, backend='nccl'):
@@ -43,7 +43,7 @@ def run(rank, size):
     train_sampler = LasagnaSampler(train_dataset)
     train_loader = DataLoader(train_dataset, sampler=train_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
-    test_dataset = DevDataset("ppi", part_size=part_size, mode='test', process_data=False)
+    test_dataset = DevDataset("ppi", part_size=part_size, mode='valid', process_data=False)
     test_sampler = LasagnaSampler(test_dataset)
     test_loader = DataLoader(test_dataset, sampler=test_sampler, shuffle=False, collate_fn=custom_collate_fn)
     
@@ -76,6 +76,11 @@ def run(rank, size):
         dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
         if dist.get_rank() == 0:
             print(f'Rank {rank} Epoch {epoch + 1}, Total Loss: {total_loss:.4f}')
+        if epoch % 10 == 0:
+            model.eval()
+            test_acc = evaluate(model, train_loader)
+            if dist.get_rank() == 0:
+                print(f'Rank {rank} Epoch {epoch + 1}, Test Acc: {test_acc:.4f}')
 
 
 if __name__ == "__main__":
