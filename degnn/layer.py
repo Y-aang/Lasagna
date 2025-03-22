@@ -22,7 +22,7 @@ class DGLGCNConv(nn.Module):
         # 1. 对节点特征作线性变换
         x = self.linear(x)
         # 2. 计算节点度（加上自环效果）
-        deg = g.in_degrees().float() + 1.0  # shape: (N,)
+        deg = g.out_degrees().float() + 1.0  # shape: (N,)
         deg_inv_sqrt = deg.pow(-0.5)
         deg_inv_sqrt[torch.isinf(deg_inv_sqrt)] = 0
         g.ndata['deg_inv_sqrt'] = deg_inv_sqrt
@@ -53,8 +53,14 @@ class DGLGNN_node(nn.Module):
     构造函数增加了：
       - instance_in_dim：实例节点原始特征维度（默认 11）
       - net_in_dim：网络节点原始特征维度（默认 3）
+      - output_dim：最终输出的维度（例如 num_tasks，默认设为1）
+    
+    在 forward 中，首先将实例节点和网络节点分别编码，然后拼接（采用 JK="concat" 时拼接所有层输出），
+    最后对网络节点部分的表示（即拼接后去掉前 num_instances 部分）进行全连接映射，复刻原来的：
+    
+        predict = F.leaky_relu(self.fc2(F.leaky_relu(self.fc1(h_node), negative_slope=0.1)), negative_slope=0.1)
     """
-    def __init__(self, num_layer, emb_dim, instance_in_dim=11, net_in_dim=3, JK="concat", residual=True, gnn_type='gcn', norm_type="layer"):
+    def __init__(self, num_layer, emb_dim, instance_in_dim=11, net_in_dim=3, JK="concat", residual=True, gnn_type='gcn', norm_type="layer", output_dim=1):
         super(DGLGNN_node, self).__init__()
         self.num_layer = num_layer
         self.JK = JK
@@ -91,6 +97,11 @@ class DGLGNN_node(nn.Module):
             nn.Linear(emb_dim, emb_dim),
             nn.LeakyReLU(negative_slope=0.1)
         )
+        
+        # 新增全连接层，复刻原 PyG 代码的预测映射
+        # 当 JK="concat" 时，拼接后的维度为 (num_layer + 1) * emb_dim
+        self.fc1 = nn.Linear((num_layer + 1) * emb_dim, 512)
+        self.fc2 = nn.Linear(512, output_dim)
     
     def forward(self, batched_data):
         """
@@ -119,18 +130,21 @@ class DGLGNN_node(nn.Module):
             h = h_forward + h_reverse
             h = self.norms[layer](h)
             h = F.leaky_relu(h, negative_slope=0.1)
-            if self.residual:
-                h = h + h_list[layer]
+            # 如果需要残差可以加上 h_list[layer]，这里我们采用 JK 拼接，所以不额外加残差
             h_list.append(h)
         
-        if self.JK == "last":
+        # 使用 JK 连接方式，这里我们采用 "concat"
+        if self.JK == "concat":
+            node_representation = torch.cat(h_list, dim=1)
+        elif self.JK == "last":
             node_representation = h_list[-1]
         elif self.JK == "sum":
             node_representation = sum(h_list)
-        elif self.JK == "concat":
-            node_representation = torch.cat(h_list, dim=1)
         else:
             raise NotImplementedError("未实现该 JK 连接方式")
         
-        # 返回网络节点部分的表示（假设前 num_instances 为实例节点）
-        return node_representation[num_instances:]
+        # 假设前 num_instances 对应实例节点，不作为最终输出
+        h_node = node_representation[num_instances:]
+        # 经过全连接层转换，复刻原 PyG 代码的处理
+        predict = F.leaky_relu(self.fc2(F.leaky_relu(self.fc1(h_node), negative_slope=0.1)), negative_slope=0.1)
+        return predict

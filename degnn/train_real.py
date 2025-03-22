@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+from torch.optim import Adam, Adagrad
 import dgl
 from torch_geometric.loader import DataLoader
 from utils.pyg_dataset import pyg_dataset
 from layer import DGLGNN_node
+import numpy as np
 
 def convert_pyg_to_dgl(data, device):
     """
@@ -76,22 +77,33 @@ print("Using device:", device)
 # 所以在构造模型时，将 instance_in_dim 设置为 35，net_in_dim 设置为 1。
 model = DGLGNN_node(
     num_layer=2,       # GNN 层数
-    emb_dim=16,        # 嵌入维度
-    instance_in_dim=35,  # 实例节点输入维度
-    net_in_dim=1,        # 网络节点输入维度
-    JK="last",         # JK 连接方式
+    emb_dim=64,        # 嵌入维度
+    instance_in_dim=45,  # 实例节点输入维度
+    net_in_dim=11,        # 网络节点输入维度
+    JK="concat",         # JK 连接方式
     residual=True,
     gnn_type='gcn',
     norm_type="layer"
 ).to(device)
 
-# 定义 classifier，并移到设备上
-classifier = nn.Linear(16, 1).to(device)
+with torch.no_grad():
+    for param in model.parameters():
+        param.data.fill_(0.01)
 
-optimizer = optim.Adam(
-    list(model.parameters()) + list(classifier.parameters()),
-    lr=0.01
-)
+
+# 定义 optimizer，只包含 model 的参数
+optimizer = Adagrad(model.parameters(), lr = 0.001)
+
+# Statistics
+y = []
+for batch_idx, data in enumerate(dataloader):
+    y.append(data.y.detach().numpy())
+y = np.concatenate(y)
+
+y_min = np.min(y)
+y_max = np.max(y)
+y_mean = np.mean(y)
+y_std = np.std(y)
 
 num_epoch = 5
 
@@ -99,21 +111,24 @@ for epoch in range(num_epoch):
     model.train()
     total_loss = 0.0
     for batch_idx, data in enumerate(dataloader):
+        if 'lap' == 'lap':
+            data.x = torch.cat([data.x, data.evects[:data.x.shape[0]]], dim=1)
+            data.x_net = torch.cat([data.x_net, data.evects[data.x.shape[0]:]], dim=1)
         # 将 PyG Data 对象转换为 DGL 格式，同时将数据移到 device
         batched_data = convert_pyg_to_dgl(data, device)
         optimizer.zero_grad()
         # 模型前向传播，返回网络节点表示，形状为 [num_net_nodes, 16]
-        net_repr = model(batched_data)
-        # 真实标签存放在 data.y，假设形状为 [num_net_nodes, 1]，需移到 device
-        target = data.y.float().to(device)
-        pred = classifier(net_repr)
-        loss = F.mse_loss(pred.view(-1), target.view(-1))
+        predict = model(batched_data)
+        target = ((data.y - y_mean) / y_std).to(device)
+        predict = predict[dataset.train_indices, :]
+        target  = target[dataset.train_indices, :]
+        # print("predict:", predict)
+        # print("target:", target)
+        loss = F.mse_loss(predict.view(-1), target.view(-1))
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
-        print(f"Epoch {epoch}, Batch {batch_idx}, Loss = {loss.item():.4f}")
+        print(f"Epoch {epoch}, Batch {batch_idx}, Loss = {loss.item():.10f}")
     
-    avg_loss = total_loss / (batch_idx + 1)
-    print(f"Epoch {epoch} Average Loss = {avg_loss:.4f}")
 
 print("Training finished.")
