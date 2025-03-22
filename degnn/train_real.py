@@ -105,7 +105,7 @@ y_max = np.max(y)
 y_mean = np.mean(y)
 y_std = np.std(y)
 
-num_epoch = 5
+num_epoch = 100
 
 for epoch in range(num_epoch):
     model.train()
